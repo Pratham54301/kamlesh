@@ -1,5 +1,5 @@
 /**
- * TRIP MANAGER - MONGODB VERSION (DEPLOYMENT READY)
+ * TRIP MANAGER - MONGODB VERSION (FIXED SAVE LOGIC)
  * Commands to run locally:
  * 1. npm init -y
  * 2. npm install express mongoose
@@ -22,7 +22,7 @@ mongoose.connect(mongoURI)
 
 // MongoDB Schema
 const tripSchema = new mongoose.Schema({
-    date: String,          // Stored as DD-MM-YYYY
+    date: String,
     pickupTime: String,
     dropTime: String,
     tripId: String,
@@ -50,6 +50,8 @@ app.get('/api/trips', async (req, res) => {
 
 app.post('/api/trips', async (req, res) => {
     try {
+        console.log("New Trip Data Incoming: ", req.body); // Terminal ma check karva mate
+        
         const count = await Trip.countDocuments();
         if (count >= 10000) {
             const oldest = await Trip.find().sort({ createdAt: 1 }).limit(1);
@@ -60,7 +62,10 @@ app.post('/api/trips', async (req, res) => {
         const newTrip = new Trip(req.body);
         await newTrip.save();
         res.json(newTrip);
-    } catch (err) { res.status(500).json(err); }
+    } catch (err) { 
+        console.error("Save Error: ", err);
+        res.status(500).json(err); 
+    }
 });
 
 app.delete('/api/trips/:id', async (req, res) => {
@@ -78,7 +83,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ટ્રિપ મેનેજમેન્ટ - MongoDB Professional</title>
+    <title>ટ્રિપ મેનેજમેન્ટ - MongoDB Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
@@ -87,8 +92,6 @@ app.get('/', (req, res) => {
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-        .teddy-container { animation: teddyFloat 4s ease-in-out infinite; }
-        @keyframes teddyFloat { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-8px) rotate(3deg); } }
         .cursor { display: inline-block; width: 3px; background-color: #4f46e5; margin-left: 4px; animation: blink 0.8s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         .welcome-gradient { background: linear-gradient(135deg, #4f46e5, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -98,7 +101,6 @@ app.get('/', (req, res) => {
         .nav-btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600; transition: all 0.2s; white-space: nowrap; cursor: pointer; }
         .nav-btn-active { background-color: #4f46e5; color: white; }
         .nav-btn-inactive { color: #cbd5e1; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -106,10 +108,10 @@ app.get('/', (req, res) => {
         <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
             <div class="text-xl font-extrabold text-indigo-400">TRIP MANAGER</div>
             <div class="flex space-x-2 overflow-x-auto no-scrollbar py-2">
-                <button id="btn-home" onclick="showTab('home')" class="nav-btn nav-btn-active">હોમ</button>
-                <button id="btn-enter-detail" onclick="showTab('enter-detail')" class="nav-btn nav-btn-inactive">વિગત</button>
-                <button id="btn-entries" onclick="showTab('entries')" class="nav-btn nav-btn-inactive">એન્ટ્રી</button>
-                <button id="btn-company-entries" onclick="showTab('company-entries')" class="nav-btn nav-btn-inactive">કંપની</button>
+                <button id="btn-home" onclick="window.showTab('home')" class="nav-btn nav-btn-active">હોમ</button>
+                <button id="btn-enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive">વિગત</button>
+                <button id="btn-entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive">એન્ટ્રી</button>
+                <button id="btn-company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive">કંપની</button>
             </div>
         </div>
     </nav>
@@ -117,15 +119,9 @@ app.get('/', (req, res) => {
     <div class="max-w-7xl mx-auto p-4 md:p-8">
         <div id="home" class="tab-content active py-12 text-center">
             <div class="bg-white max-w-3xl mx-auto rounded-3xl p-10 shadow-sm border border-slate-200">
-                <div class="teddy-container mb-8 inline-block">
-                    <svg width="120" height="120" viewBox="0 0 200 200"><circle cx="60" cy="60" r="30" fill="#92400e" /><circle cx="140" cy="60" r="30" fill="#92400e" /><circle cx="100" cy="110" r="75" fill="#b45309" /><circle cx="75" cy="100" r="8" fill="#0f172a" /><circle cx="125" cy="100" r="8" fill="#0f172a" /><ellipse cx="100" cy="135" rx="28" ry="22" fill="#fde68a" /><circle cx="100" cy="125" r="7" fill="#0f172a" /><path d="M 85 145 Q 100 162 115 145" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round" /></svg>
-                </div>
-                <div class="mb-10 min-h-[4rem] flex justify-center items-center">
-                    <h1 id="typing-text" class="text-4xl md:text-6xl font-extrabold welcome-gradient"></h1>
-                    <span class="cursor text-4xl md:text-6xl">&nbsp;</span>
-                </div>
-                <p class="text-slate-500 mb-10 text-lg">Rate: 21 | Date: DD-MM-YYYY | MongoDB</p>
-                <button onclick="showTab('enter-detail')" class="bg-indigo-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg hover:bg-indigo-700 transition">નવી એન્ટ્રી શરૂ કરો ➔</button>
+                <h1 id="typing-text" class="text-4xl md:text-6xl font-extrabold welcome-gradient min-h-[4rem]"></h1>
+                <p class="text-slate-500 mb-10 text-lg uppercase font-bold tracking-widest tracking-tighter">Rate: 21 (Fixed) | MongoDB Professional</p>
+                <button onclick="window.showTab('enter-detail')" class="bg-indigo-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg hover:bg-indigo-700 transition">નવી એન્ટ્રી શરૂ કરો ➔</button>
             </div>
         </div>
 
@@ -139,16 +135,16 @@ app.get('/', (req, res) => {
                         <div><label class="text-xs font-bold uppercase text-slate-500">Drop સમય</label><input type="time" id="dropTime" required class="input-field"></div>
                     </div>
                     <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-slate-500">આઈડી (Trip ID)</label><input type="text" id="tripId" placeholder="Manual ID" required class="input-field font-mono"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">ચઢવાનું સ્થળ</label><input type="text" id="pickup" list="locationList" placeholder="Pickup point" required class="input-field"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">ઉતરવાનું સ્થળ</label><input type="text" id="drop" list="locationList" placeholder="Drop point" required class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">ચઢવાનું સ્થળ</label><input type="text" id="pickup" list="locationList" placeholder="Pick up point" required class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">ઉતરવાનું સ્થળ</label><input type="text" id="drop" list="locationList" placeholder="Drop off point" required class="input-field"></div>
                     <div><label class="text-xs font-bold uppercase text-slate-500">માણસો</label><input type="number" id="person" required class="input-field"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">KM</label><input type="number" id="km" step="0.01" required oninput="calculateTotal()" class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">KM</label><input type="number" id="km" step="0.01" required oninput="window.calculateTotal()" class="input-field"></div>
                     <div><label class="text-xs font-bold uppercase text-slate-500">Rate (Fixed)</label><input type="number" id="rate" value="21" readonly class="input-field bg-slate-100 font-bold text-indigo-700"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700">અન્ય (+)</label><input type="number" id="other" step="0.01" value="0" oninput="calculateTotal()" class="input-field border-indigo-100 bg-indigo-50/20"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500 text-rose-500">CNG (-)</label><input type="number" id="cng" step="0.01" value="0" oninput="calculateTotal()" class="input-field border-rose-100 bg-rose-50/20"></div>
-                    <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-rose-600">અન્ય ખર્ચ (બાદ થશે -)</label><input type="number" id="otherExpense" step="0.01" value="0" oninput="calculateTotal()" class="input-field bg-rose-50 border-rose-200"></div>
-                    <div class="md:col-span-2 bg-slate-900 p-6 rounded-xl mt-4 flex justify-between items-center text-white font-black shadow-inner"><span class="text-slate-400">TOTAL:</span><span id="totalDisplay" class="text-3xl font-black">₹ 0.00</span></div>
-                    <button type="button" onclick="saveToMongo()" class="md:col-span-2 btn-primary py-4 text-lg">Save to MongoDB 💾</button>
+                    <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700">અન્ય (+)</label><input type="number" id="other" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500 text-rose-500">CNG (-)</label><input type="number" id="cng" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field"></div>
+                    <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-rose-600">અન્ય ખર્ચ (બાદ થશે -)</label><input type="number" id="otherExpense" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field bg-rose-50"></div>
+                    <div class="md:col-span-2 bg-slate-900 p-6 rounded-xl mt-4 flex justify-between items-center text-white font-black shadow-inner"><span class="text-slate-400">TOTAL:</span><span id="totalDisplay" class="text-3xl">₹ 0.00</span></div>
+                    <button type="button" id="saveBtn" onclick="window.saveToMongo()" class="md:col-span-2 btn-primary py-4 text-lg">Save to MongoDB 💾</button>
                 </form>
             </div>
         </div>
@@ -157,27 +153,27 @@ app.get('/', (req, res) => {
             <div id="pdf-area-normal" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 flex justify-between items-center bg-slate-50">
                     <h2 class="text-xl font-extrabold text-slate-900 uppercase">બધી એન્ટ્રીઓ</h2>
-                    <button onclick="downloadPDF('pdf-area-normal')" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow-md hover:bg-emerald-700 transition">📥 PDF</button>
+                    <button onclick="window.downloadPDF('pdf-area-normal')" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow-md">📥 PDF</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-900 text-slate-400 uppercase text-[10px] font-bold tracking-widest">
                             <tr>
-                                <th class="p-4">તારીખ</th>
-                                <th class="p-4">ID</th>
-                                <th class="p-4 text-center">માણસો</th>
-                                <th class="p-4">રૂટ</th>
-                                <th class="p-4">KM</th>
-                                <th class="p-4">સમય</th>
-                                <th class="p-4 text-right">ટોટલ</th>
-                                <th class="p-4 text-center">Action</th>
+                                <th class="p-4 border-b">તારીખ</th>
+                                <th class="p-4 border-b">ID</th>
+                                <th class="p-4 border-b text-center">માણસો</th>
+                                <th class="p-4 border-b">રૂટ</th>
+                                <th class="p-4 border-b">KM</th>
+                                <th class="p-4 border-b">સમય</th>
+                                <th class="p-4 border-b text-right">ટોટલ</th>
+                                <th class="p-4 border-b text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="entriesTableBody" class="divide-y divide-slate-100"></tbody>
                         <tfoot id="entriesFooter"></tfoot>
                     </table>
                 </div>
-                <div id="noDataNormal" class="p-20 text-center hidden text-slate-400 font-bold uppercase">🏜️ No Entries.</div>
+                <div id="noDataNormal" class="p-20 text-center hidden text-slate-400 font-bold uppercase">🏜️ No Entries Found.</div>
             </div>
         </div>
 
@@ -185,7 +181,7 @@ app.get('/', (req, res) => {
             <div id="pdf-area-company" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 flex justify-between items-center bg-indigo-900 text-white">
                     <h2 class="text-xl font-extrabold uppercase">કંપની એન્ટ્રી રિપોર્ટ</h2>
-                    <button onclick="downloadPDF('pdf-area-company')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold shadow-md hover:bg-slate-100 transition">📁 PDF</button>
+                    <button onclick="window.downloadPDF('pdf-area-company')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold shadow-md hover:bg-slate-100 transition">📁 PDF</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
@@ -201,7 +197,7 @@ app.get('/', (req, res) => {
                                 <th class="p-4"></th>
                             </tr>
                         </thead>
-                        <tbody id="companyTableBody" class="divide-y divide-slate-100 font-medium"></tbody>
+                        <tbody id="companyTableBody" class="divide-y divide-slate-100"></tbody>
                         <tfoot id="companyFooter"></tfoot>
                     </table>
                 </div>
@@ -210,7 +206,7 @@ app.get('/', (req, res) => {
     </div>
 
     <datalist id="locationList">
-        <option value="અખબારનગર"> <option value="અંબાવાડી"> <option value="અસારવા"> <option value="બોપલ"> <option value="ચાંદખેડા"> <option value="ગોટા"> <option value="ઇસનપુર"> <option value="નિકોલ"> <option value="પાલડી"> <option value="સેટેલાઇટ"> <option value="થલતેજ"> <option value="વસ્ત્રાપુર"> <option value="વાસણા"> <option value="વટવા"> <option value="વેજલપુર"> <option value="સરગાસણ"> <option value="સેક્ટર ૧૧">
+        <option value="અખબારનગર"> <option value="અંબાવાડી"> <option value="અસારવા"> <option value="બોપલ"> <option value="ચાંદખેડા"> <option value="ગોટા"> <option value="ઇસનપુર"> <option value="નિકોલ"> <option value="પાલડી"> <option value="સેટેલાઇટ"> <option value="થલતેજ"> <option value="વસ્ત્રાપુર"> <option value="સરગાસણ"> <option value="સેક્ટર ૧૧">
     </datalist>
 
     <div id="toast" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-xl shadow-2xl z-[100] font-bold"></div>
@@ -218,7 +214,7 @@ app.get('/', (req, res) => {
     <script>
         let typingTimeout;
 
-        // Attach functions to window to ensure HTML attributes can find them
+        // --- GLOBAL FUNCTIONS ---
         window.formatDateToDMY = function(dateStr) {
             if(!dateStr) return "";
             const parts = dateStr.split('-');
@@ -233,6 +229,7 @@ app.get('/', (req, res) => {
             const otherExp = parseFloat(document.getElementById('otherExpense').value) || 0;
             const total = (km * 21 + other) - cng - otherExp;
             document.getElementById('totalDisplay').innerText = "₹ " + total.toLocaleString('en-IN', {minimumFractionDigits: 2});
+            return total;
         };
 
         window.showTab = function(id) {
@@ -241,8 +238,7 @@ app.get('/', (req, res) => {
             if(target) target.classList.add('active');
             
             document.querySelectorAll('.nav-btn').forEach(b => {
-                b.classList.remove('nav-btn-active');
-                b.classList.add('nav-btn-inactive');
+                b.classList.remove('nav-btn-active'); b.classList.add('nav-btn-inactive');
             });
             const activeBtn = document.getElementById('btn-' + id);
             if(activeBtn) activeBtn.classList.add('nav-btn-active');
@@ -278,20 +274,26 @@ app.get('/', (req, res) => {
         async function fetchTrips() {
             try {
                 const res = await fetch('/api/trips');
+                if(!res.ok) throw new Error("Fetch failed");
                 const data = await res.json();
                 renderTables(data);
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error("Fetch Error:", e);
+                window.showToast("Deta load karva ma error! ❌");
+            }
         }
 
         window.saveToMongo = async function() {
             const form = document.getElementById('tripForm');
             if(!form.checkValidity()) { form.reportValidity(); return; }
 
-            const km = parseFloat(document.getElementById('km').value) || 0;
+            const km = parseFloat(document.getElementById('km').value);
+            if(isNaN(km)) { window.showToast("Please enter KM! ⚠️"); return; }
+
             const other = parseFloat(document.getElementById('other').value) || 0;
             const cng = parseFloat(document.getElementById('cng').value) || 0;
             const otherExp = parseFloat(document.getElementById('otherExpense').value) || 0;
-            const total = (km * 21 + other) - cng - otherExp;
+            const totalVal = (km * 21 + other) - cng - otherExp;
 
             const entry = {
                 date: window.formatDateToDMY(document.getElementById('date').value),
@@ -300,29 +302,53 @@ app.get('/', (req, res) => {
                 tripId: document.getElementById('tripId').value,
                 pickup: document.getElementById('pickup').value,
                 drop: document.getElementById('drop').value,
-                person: document.getElementById('person').value,
-                km, rate: 21, other, cng, otherExpense: otherExp,
-                total: total.toFixed(2)
+                person: parseInt(document.getElementById('person').value) || 0,
+                km: km,
+                rate: 21,
+                other: other,
+                cng: cng,
+                otherExpense: otherExp,
+                total: totalVal.toFixed(2)
             };
 
-            const res = await fetch('/api/trips', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(entry)
-            });
-            if(res.ok) { 
-                window.showToast("MongoDB ma save thai gayu! ✅"); 
-                form.reset(); 
-                document.getElementById('totalDisplay').innerText = "₹ 0.00";
-                fetchTrips(); 
-                window.showTab('entries'); 
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true;
+            btn.innerText = "Saving... ⏳";
+
+            try {
+                const res = await fetch('/api/trips', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(entry)
+                });
+                
+                if(res.ok) { 
+                    window.showToast("MongoDB ma save thai gayu! ✅"); 
+                    form.reset(); 
+                    document.getElementById('totalDisplay').innerText = "₹ 0.00";
+                    await fetchTrips(); 
+                    window.showTab('entries'); 
+                } else {
+                    throw new Error("Server error while saving");
+                }
+            } catch(e) {
+                console.error("Save Error:", e);
+                window.showToast("Save karva ma error avyo! ❌");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Save to MongoDB 💾";
             }
         };
 
         window.deleteTrip = async function(id) {
             if(!confirm("Delete karvu che?")) return;
-            await fetch('/api/trips/'+id, { method: 'DELETE' });
-            fetchTrips();
+            try {
+                const res = await fetch('/api/trips/'+id, { method: 'DELETE' });
+                if(res.ok) {
+                    window.showToast("Trip Delete thai gai! 🗑️");
+                    fetchTrips();
+                }
+            } catch(e) { console.error(e); }
         };
 
         function renderTables(data) {
@@ -337,6 +363,8 @@ app.get('/', (req, res) => {
             
             if(!data || data.length === 0) {
                 if(noData) noData.classList.remove('hidden');
+                if(foot) foot.innerHTML = '';
+                if(cfoot) cfoot.innerHTML = '';
                 return;
             }
             if(noData) noData.classList.add('hidden');
@@ -344,53 +372,72 @@ app.get('/', (req, res) => {
             let gKm = 0, gCng = 0, gAmt = 0, gcAmt = 0;
 
             data.forEach(e => {
-                gKm += parseFloat(e.km || 0); gCng += parseFloat(e.cng || 0); gAmt += parseFloat(e.total || 0);
-                const cTotal = parseFloat(e.km || 0) * 21; gcAmt += cTotal;
+                const kmVal = parseFloat(e.km || 0);
+                const cngVal = parseFloat(e.cng || 0);
+                const totalVal = parseFloat(e.total || 0);
+                
+                gKm += kmVal; 
+                gCng += cngVal; 
+                gAmt += totalVal;
+                
+                const cTotal = kmVal * 21; 
+                gcAmt += cTotal;
 
-                const commonRow = \`
-                    <td class="p-4 font-bold text-slate-800 uppercase tracking-tighter">\${e.date}</td>
-                    <td class="p-4 font-bold text-indigo-600 uppercase">\${e.tripId}</td>
-                    <td class="p-4 text-center font-bold text-slate-700">\${e.person}</td>
+                const commonPart = \`
+                    <td class="p-4 font-bold text-slate-800 uppercase tracking-tighter text-xs font-mono">\${e.date}</td>
+                    <td class="p-4 font-bold text-indigo-600 uppercase font-mono">\${e.tripId}</td>
+                    <td class="p-4 text-center font-bold text-slate-700 font-mono">\${e.person}</td>
                     <td class="p-4 text-[10px] leading-tight font-semibold">🏁 \${e.pickup}<br>📍 \${e.drop}</td>
-                    <td class="p-4 font-bold text-slate-900">\${e.km} KM</td>
-                    <td class="p-4 text-[10px] font-black text-slate-500 uppercase">\${e.pickupTime} - \${e.dropTime}</td>
+                    <td class="p-4 font-bold font-mono text-slate-900">\${kmVal.toFixed(2)} KM</td>
+                    <td class="p-4 text-[10px] font-black text-slate-500 uppercase font-mono">\${e.pickupTime} - \${e.dropTime}</td>
                 \`;
 
                 tbody.innerHTML += \`
                     <tr class="hover:bg-slate-50 border-b">
-                        \${commonRow}
-                        <td class="p-4 font-black text-right text-slate-900 text-sm">₹\${parseFloat(e.total).toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                        <td class="p-4 text-center"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400 text-lg hover:text-rose-600 transition">🗑️</button></td>
+                        \${commonPart}
+                        <td class="p-4 font-black text-right text-slate-900 text-sm font-mono">₹\${totalVal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                        <td class="p-4 text-center no-pdf-hide"><button onclick="window.deleteTrip('\${e._id}')" class="text-rose-400 text-lg hover:text-rose-600 transition">🗑️</button></td>
                     </tr>\`;
 
                 cbody.innerHTML += \`
                     <tr class="hover:bg-indigo-50 border-b">
-                        \${commonRow}
-                        <td class="p-4 font-black text-right text-base text-slate-900">₹\${cTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-                        <td class="p-4 text-center"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400">🗑️</button></td>
+                        \${commonPart}
+                        <td class="p-4 font-black text-right text-base text-slate-900 font-mono">₹\${cTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                        <td class="p-4 text-center no-pdf-hide"><button onclick="window.deleteTrip('\${e._id}')" class="text-rose-400">🗑️</button></td>
                     </tr>\`;
             });
 
-            const footContent = (trips, km, cng, amt, isCompany) => \`
-                <tr class="\${isCompany ? 'bg-indigo-900' : 'bg-slate-900'} text-white font-bold">
-                    <td colspan="2" class="p-4 text-[10px]">Trips: \${trips}</td>
+            const footStyle = "bg-slate-900 text-white font-bold font-mono";
+            const compFootStyle = "bg-indigo-900 text-white font-bold font-mono";
+
+            foot.innerHTML = \`
+                <tr class="\${footStyle}">
+                    <td colspan="2" class="p-4 text-[10px]">Trips: \${data.length}</td>
                     <td class="p-4 text-center">-</td>
-                    <td class="p-4 text-xs tracking-widest uppercase">Total</td>
-                    <td class="p-4">\${km.toFixed(2)} KM</td>
-                    <td class="p-4 text-[10px]">\${cng ? 'CNG: -₹'+cng.toLocaleString('en-IN') : '-'}</td>
-                    <td class="p-4 text-right text-indigo-300">₹\${amt.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                    <td class="p-4 text-xs tracking-widest uppercase text-center">Total</td>
+                    <td class="p-4">\${gKm.toFixed(2)} KM</td>
+                    <td class="p-4 text-[10px]">CNG: -₹\${gCng.toLocaleString('en-IN')}</td>
+                    <td class="p-4 text-right text-indigo-300 text-base">₹\${gAmt.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
                     <td></td>
                 </tr>\`;
 
-            foot.innerHTML = footContent(data.length, gKm, gCng, gAmt, false);
-            cfoot.innerHTML = footContent(data.length, gKm, 0, gcAmt, true);
+            cfoot.innerHTML = \`
+                <tr class="\${compFootStyle}">
+                    <td colspan="2" class="p-4 text-[10px]">Trips: \${data.length}</td>
+                    <td class="p-4 text-center">-</td>
+                    <td class="p-4 text-xs tracking-widest uppercase text-center">Total</td>
+                    <td class="p-4">\${gKm.toFixed(2)} KM</td>
+                    <td class="p-4 text-center">-</td>
+                    <td class="p-4 text-right text-indigo-100 text-base">₹\${gcAmt.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                    <td></td>
+                </tr>\`;
         }
 
         window.downloadPDF = async function(areaId) {
             const element = document.getElementById(areaId);
             const opt = { 
                 margin: 5, 
-                filename: 'Kamlesh_Trip_Report.pdf', 
+                filename: 'Trip_Report.pdf', 
                 html2canvas: {scale: 2}, 
                 jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'} 
             };
@@ -399,14 +446,15 @@ app.get('/', (req, res) => {
             window.showToast("Download Safal! 📄");
         };
 
-        window.onload = () => { fetchTrips(); window.startTypingEffect(); }
+        window.onload = () => { 
+            fetchTrips(); 
+            window.startTypingEffect(); 
+        };
     </script>
 </body>
 </html>
     `);
 });
-
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
  const PORT = 3000;
