@@ -78,7 +78,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ટ્રિપ મેનેજમેન્ટ - MongoDB Live</title>
+    <title>ટ્રિપ મેનેજમેન્ટ - MongoDB Professional</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
@@ -98,13 +98,14 @@ app.get('/', (req, res) => {
         .nav-btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600; transition: all 0.2s; white-space: nowrap; }
         .nav-btn-active { background-color: #4f46e5; color: white; }
         .nav-btn-inactive { color: #cbd5e1; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="min-h-screen">
     <nav class="bg-slate-900 text-white shadow-xl sticky top-0 z-50 border-b border-slate-800">
         <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
             <div class="text-xl font-extrabold text-indigo-400">TRIP MANAGER</div>
-            <div class="flex space-x-2 overflow-x-auto">
+            <div class="flex space-x-2 overflow-x-auto no-scrollbar py-2">
                 <button id="btn-home" onclick="showTab('home')" class="nav-btn nav-btn-active">હોમ</button>
                 <button id="btn-enter-detail" onclick="showTab('enter-detail')" class="nav-btn nav-btn-inactive">વિગત</button>
                 <button id="btn-entries" onclick="showTab('entries')" class="nav-btn nav-btn-inactive">એન્ટ્રી</button>
@@ -114,17 +115,22 @@ app.get('/', (req, res) => {
     </nav>
 
     <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <!-- Section: Home -->
         <div id="home" class="tab-content active py-12 text-center">
             <div class="bg-white max-w-3xl mx-auto rounded-3xl p-10 shadow-sm border border-slate-200">
                 <div class="teddy-container mb-8 inline-block">
                     <svg width="120" height="120" viewBox="0 0 200 200"><circle cx="60" cy="60" r="30" fill="#92400e" /><circle cx="140" cy="60" r="30" fill="#92400e" /><circle cx="100" cy="110" r="75" fill="#b45309" /><circle cx="75" cy="100" r="8" fill="#0f172a" /><circle cx="125" cy="100" r="8" fill="#0f172a" /><ellipse cx="100" cy="135" rx="28" ry="22" fill="#fde68a" /><circle cx="100" cy="125" r="7" fill="#0f172a" /><path d="M 85 145 Q 100 162 115 145" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round" /></svg>
                 </div>
-                <h1 id="typing-text" class="text-4xl md:text-6xl font-extrabold welcome-gradient min-h-[4rem]"></h1>
-                <p class="text-slate-500 mb-10 text-lg">Rate: 21 | LIVE MONGODB</p>
-                <button onclick="showTab('enter-detail')" class="bg-indigo-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg">નવી એન્ટ્રી ➔</button>
+                <div class="mb-10 min-h-[4rem] flex justify-center items-center">
+                    <h1 id="typing-text" class="text-4xl md:text-6xl font-extrabold welcome-gradient"></h1>
+                    <span class="cursor text-4xl md:text-6xl">&nbsp;</span>
+                </div>
+                <p class="text-slate-500 mb-10 text-lg">Rate: 21 (Fixed) | Format: DD-MM-YYYY</p>
+                <button onclick="showTab('enter-detail')" class="bg-indigo-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg">નવી એન્ટ્રી શરૂ કરો ➔</button>
             </div>
         </div>
 
+        <!-- Section: Form -->
         <div id="enter-detail" class="tab-content max-w-3xl mx-auto">
             <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200">
                 <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 text-slate-900 uppercase">ટ્રિપની વિગત ભરો</h2>
@@ -134,14 +140,14 @@ app.get('/', (req, res) => {
                         <div><label class="text-xs font-bold uppercase text-slate-500">Pickup સમય</label><input type="time" id="pickupTime" required class="input-field"></div>
                         <div><label class="text-xs font-bold uppercase text-slate-500">Drop સમય</label><input type="time" id="dropTime" required class="input-field"></div>
                     </div>
-                    <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-slate-500">ટ્રિપ આઈડી</label><input type="text" id="tripId" placeholder="Manual ID" required class="input-field font-mono"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">ચઢવાનું સ્થળ</label><input type="text" id="pickup" list="locationList" placeholder="Pickup point" required class="input-field"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">ઉતરવાનું સ્થળ</label><input type="text" id="drop" list="locationList" placeholder="Drop point" required class="input-field"></div>
+                    <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-slate-500">આઈડી (ID)</label><input type="text" id="tripId" placeholder="Manual ID" required class="input-field font-mono"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">ચઢવાનું સ્થળ</label><input type="text" id="pickup" list="locationList" required class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">ઉતરવાનું સ્થળ</label><input type="text" id="drop" list="locationList" required class="input-field"></div>
                     <div><label class="text-xs font-bold uppercase text-slate-500">માણસો</label><input type="number" id="person" required class="input-field"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500">કિલોમીટર (KM)</label><input type="number" id="km" step="0.01" required oninput="calculateTotal()" class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500">KM</label><input type="number" id="km" step="0.01" required oninput="calculateTotal()" class="input-field"></div>
                     <div><label class="text-xs font-bold uppercase text-slate-500">Rate (Fixed)</label><input type="number" id="rate" value="21" readonly class="input-field bg-slate-100 font-bold text-indigo-700"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700">અન્ય (+)</label><input type="number" id="other" step="0.01" value="0" oninput="calculateTotal()" class="input-field border-indigo-100 bg-indigo-50/20"></div>
-                    <div><label class="text-xs font-bold uppercase text-slate-500 text-rose-500">CNG (-)</label><input type="number" id="cng" step="0.01" value="0" oninput="calculateTotal()" class="input-field border-rose-100 bg-rose-50/20"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700">અન્ય (+)</label><input type="number" id="other" step="0.01" value="0" oninput="calculateTotal()" class="input-field"></div>
+                    <div><label class="text-xs font-bold uppercase text-slate-500 text-rose-500">CNG (-)</label><input type="number" id="cng" step="0.01" value="0" oninput="calculateTotal()" class="input-field"></div>
                     <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-rose-600">અન્ય ખર્ચ (બાદ થશે -)</label><input type="number" id="otherExpense" step="0.01" value="0" oninput="calculateTotal()" class="input-field bg-rose-50 border-rose-200"></div>
                     <div class="md:col-span-2 bg-slate-900 p-6 rounded-xl mt-4 flex justify-between items-center text-white font-black shadow-inner"><span class="text-slate-400">TOTAL:</span><span id="totalDisplay" class="text-3xl">₹ 0.00</span></div>
                     <button type="button" onclick="saveToMongo()" class="md:col-span-2 btn-primary py-4 text-lg">Save to MongoDB 💾</button>
@@ -149,6 +155,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
+        <!-- Section: Entries -->
         <div id="entries" class="tab-content">
             <div id="pdf-area-normal" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 flex justify-between items-center bg-slate-50">
@@ -166,21 +173,23 @@ app.get('/', (req, res) => {
                                 <th class="p-4">KM</th>
                                 <th class="p-4">સમય</th>
                                 <th class="p-4 text-right">ટોટલ</th>
-                                <th class="p-4 text-center">Action</th>
+                                <th class="p-4 text-center">Delete</th>
                             </tr>
                         </thead>
-                        <tbody id="entriesTableBody" class="divide-y"></tbody>
+                        <tbody id="entriesTableBody" class="divide-y divide-slate-100"></tbody>
                         <tfoot id="entriesFooter"></tfoot>
                     </table>
                 </div>
+                <div id="noDataNormal" class="p-20 text-center hidden text-slate-400 font-bold uppercase">🏜️ No Entries.</div>
             </div>
         </div>
 
+        <!-- Section: Company -->
         <div id="company-entries" class="tab-content">
             <div id="pdf-area-company" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="p-6 flex justify-between items-center bg-indigo-900 text-white">
                     <h2 class="text-xl font-extrabold uppercase">કંપની એન્ટ્રી રિપોર્ટ</h2>
-                    <button onclick="downloadPDF('pdf-area-company')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold shadow-md">📁 PDF</button>
+                    <button onclick="downloadPDF('pdf-area-company')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold shadow-md hover:bg-slate-100">📁 PDF</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
@@ -196,7 +205,7 @@ app.get('/', (req, res) => {
                                 <th class="p-4"></th>
                             </tr>
                         </thead>
-                        <tbody id="companyTableBody" class="divide-y"></tbody>
+                        <tbody id="companyTableBody" class="divide-y divide-slate-100"></tbody>
                         <tfoot id="companyFooter"></tfoot>
                     </table>
                 </div>
@@ -205,7 +214,7 @@ app.get('/', (req, res) => {
     </div>
 
     <datalist id="locationList">
-        <option value="અખબારનગર"> <option value="અંબાવાડી"> <option value="બોપલ"> <option value="ચાંદખેડા"> <option value="ગોટા"> <option value="ઇસનપુર"> <option value="નિકોલ"> <option value="સેટેલાઇટ"> <option value="થલતેજ"> <option value="વસ્ત્રાપુર"> <option value="સરગાસણ">
+        <option value="અખબારનગર"> <option value="અંબાવાડી"> <option value="અસારવા"> <option value="બોપલ"> <option value="ચાંદખેડા"> <option value="ગોટા"> <option value="ઇસનપુર"> <option value="નિકોલ"> <option value="પાલડી"> <option value="સેટેલાઇટ"> <option value="સાબરમતી"> <option value="થલતેજ"> <option value="વસ્ત્રાપુર"> <option value="વાસણા"> <option value="વટવા"> <option value="વેજલપુર"> <option value="સરગાસણ"> <option value="સેક્ટર ૧૧">
     </datalist>
 
     <div id="toast" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-xl shadow-2xl z-[100] font-bold"></div>
@@ -213,7 +222,6 @@ app.get('/', (req, res) => {
     <script>
         let typingTimeout;
 
-        // Date format DD-MM-YYYY
         function formatDateToDMY(dateStr) {
             if(!dateStr) return "";
             const [y, m, d] = dateStr.split('-');
@@ -266,7 +274,7 @@ app.get('/', (req, res) => {
         }
 
         async function deleteTrip(id) {
-            if(!confirm("Delete karvu che?")) return;
+            if(!confirm("Delete?")) return;
             await fetch('/api/trips/'+id, { method: 'DELETE' });
             fetchTrips();
         }
@@ -276,17 +284,22 @@ app.get('/', (req, res) => {
             const cbody = document.getElementById('companyTableBody');
             const foot = document.getElementById('entriesFooter');
             const cfoot = document.getElementById('companyFooter');
+            const noData = document.getElementById('noDataNormal');
+            
             if(!tbody) return;
             tbody.innerHTML = ''; cbody.innerHTML = '';
             
+            if(!data || data.length === 0) {
+                if(noData) noData.classList.remove('hidden');
+                return;
+            }
+            if(noData) noData.classList.add('hidden');
+
             let gKm = 0, gCng = 0, gAmt = 0, gcAmt = 0;
 
             data.forEach(e => {
-                gKm += parseFloat(e.km || 0); 
-                gCng += parseFloat(e.cng || 0); 
-                gAmt += parseFloat(e.total || 0);
-                const cTotal = parseFloat(e.km || 0) * 21; 
-                gcAmt += cTotal;
+                gKm += parseFloat(e.km || 0); gCng += parseFloat(e.cng || 0); gAmt += parseFloat(e.total || 0);
+                const cTotal = parseFloat(e.km || 0) * 21; gcAmt += cTotal;
 
                 const commonRow = \`
                     <td class="p-4 font-bold text-slate-800 uppercase tracking-tighter">\${e.date}</td>
@@ -300,15 +313,15 @@ app.get('/', (req, res) => {
                 tbody.innerHTML += \`
                     <tr class="hover:bg-slate-50 border-b">
                         \${commonRow}
-                        <td class="p-4 font-black text-right text-slate-900">₹\${parseFloat(e.total).toLocaleString('en-IN')}</td>
-                        <td class="p-4 text-center"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400 text-lg">🗑️</button></td>
+                        <td class="p-4 font-black text-right text-slate-900 text-sm">₹\${parseFloat(e.total).toLocaleString('en-IN')}</td>
+                        <td class="p-4 text-center no-pdf-hide"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400 text-lg">🗑️</button></td>
                     </tr>\`;
 
                 cbody.innerHTML += \`
                     <tr class="hover:bg-indigo-50 border-b">
                         \${commonRow}
                         <td class="p-4 font-black text-right text-base text-slate-900">₹\${cTotal.toLocaleString('en-IN')}</td>
-                        <td class="p-4 text-center"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400">🗑️</button></td>
+                        <td class="p-4 text-center no-pdf-hide"><button onclick="deleteTrip('\${e._id}')" class="text-rose-400">🗑️</button></td>
                     </tr>\`;
             });
 
@@ -335,6 +348,8 @@ app.get('/', (req, res) => {
             });
             document.getElementById('btn-' + id).classList.add('nav-btn-active');
             if (id === 'home') startTypingEffect();
+            if (id === 'entries') fetchTrips();
+            if (id === 'company-entries') fetchTrips();
         }
 
         function calculateTotal() {
@@ -371,8 +386,15 @@ app.get('/', (req, res) => {
 
         async function downloadPDF(areaId) {
             const element = document.getElementById(areaId);
-            const opt = { margin: 5, filename: 'Trip_Report.pdf', jsPDF: {orientation: 'portrait'} };
+            const opt = { 
+                margin: 5, 
+                filename: 'Trip_Report.pdf', 
+                html2canvas: {scale: 2}, 
+                jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'} 
+            };
+            showToast("PDF taiyar thai rahi che... ⏳");
             await html2pdf().set(opt).from(element).save();
+            showToast("Download Safal! 📄");
         }
 
         window.onload = () => { fetchTrips(); startTypingEffect(); }
@@ -381,8 +403,7 @@ app.get('/', (req, res) => {
 </html>
     `);
 });
-
-
+git 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
  const PORT = 3000;
