@@ -17,5 +17,13 @@
     "express": "^5.2.1",
     "mongoose": "^9.2.1",
     "socket.io": "^4.8.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pratham54301/kamlesh.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pratham54301/kamlesh/issues"
+  },
+  "homepage": "https://github.com/Pratham54301/kamlesh#readme"
 }
