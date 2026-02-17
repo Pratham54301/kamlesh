@@ -25,5 +25,6 @@
   "bugs": {
     "url": "https://github.com/Pratham54301/kamlesh/issues"
   },
-  "homepage": "https://github.com/Pratham54301/kamlesh#readme"
+  "homepage": "https://github.com/Pratham54301/kamlesh#readme",
+  "devDependencies": {}
 }
