@@ -1,7 +1,6 @@
-const CACHE_NAME = 'tripset-v6';
+const CACHE_NAME = 'tripset-v7';
 const urlsToCache = [
     '/',
-    '/manifest.json',
     '/icon-192.png',
     '/icon-512.png',
     '/favicon.ico'
@@ -51,6 +50,12 @@ self.addEventListener('fetch', event => {
                 });
             })
         );
+        return;
+    }
+
+    // Keep manifest network-first to avoid stale install metadata.
+    if (url.pathname === '/manifest.json') {
+        event.respondWith(fetch(event.request));
         return;
     }
 

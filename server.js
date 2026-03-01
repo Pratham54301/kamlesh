@@ -15,7 +15,6 @@
     const app = express();
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
-    app.use(express.static(__dirname));
 
     // Session (must be before routes that use it)
     const mongoURI = "mongodb+srv://vedteic:Pratham%4054301@vedteix.yby9dng.mongodb.net/tripkamlesh-db";
@@ -59,6 +58,9 @@
         res.setHeader('Cache-Control', 'no-store');
         res.sendFile(path.join(__dirname, 'sw.js'));
     });
+
+    // Serve static files after explicit PWA routes so manifest/sw headers stay controlled.
+    app.use(express.static(__dirname));
 
 
     // --- MONGODB CONNECTION ---
@@ -383,6 +385,8 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Tripset</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#F97316">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; }
