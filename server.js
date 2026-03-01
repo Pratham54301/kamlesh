@@ -527,7 +527,7 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
         <title>Tripset (Invoice Build)</title>
         <meta name="description" content="Tripset is a simple and easy to use trip management system for your business.">
-        <link rel="manifest" href="/manifest.json">
+        <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#F97316">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -2596,6 +2596,7 @@ let profitChartInstance = null;
 let weeklyChartInstance = null;
 
 // Enhanced Service Worker Registration
+
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
         .then(function(registration) {
