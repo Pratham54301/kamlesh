@@ -542,8 +542,7 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-
+        <script src="https://cdn.jsdelivr.net/npm/i18next@23.16.8/dist/umd/i18next.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <style>
         
@@ -562,7 +561,66 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     color: white;
 }
 
-            .nav-btn-inactive { color: #cbd5e1; }.dash-card {
+            .nav-btn-inactive { color: #cbd5e1; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    body.mobile-nav-open { overflow: hidden !important; }
+    #mobileNavBackdrop { display: none; }
+    #mobileNavMenu { display: none; }
+    #mobileNavMenu.open { display: block; }
+    #mobileMenuBtn {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 0.5rem;
+        border: 1px solid #334155;
+        background: #0b1220;
+        color: #f8fafc;
+        font-weight: 900;
+        line-height: 1;
+    }
+    @media (max-width: 767px) {
+        #mobileNavBackdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.55);
+            z-index: 49;
+        }
+        #mobileNavMenu {
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            width: min(86vw, 320px);
+            background: #020617;
+            border-left: 1px solid #1e293b;
+            box-shadow: -12px 0 28px rgba(0, 0, 0, 0.45);
+            z-index: 50;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        #mobileNavMenu .nav-btn {
+            width: 100%;
+            text-align: left;
+            padding: 0.75rem 0.9rem;
+        }
+        .dash-card {
+            padding: 1rem;
+        }
+        .dash-value {
+            font-size: 1.35rem;
+        }
+        #installPrompt {
+            left: 0.5rem;
+            right: 0.5rem;
+            width: auto;
+            transform: translateY(120%);
+            max-width: none;
+        }
+        #installPrompt.show {
+            transform: translateY(0);
+        }
+    }
+    .dash-card {
         background: white;
         padding: 1.5rem;
         border-radius: 1rem;
@@ -981,7 +1039,7 @@ body.dark .input-field::placeholder {
 
         <!-- Offline Banner -->
         <div id="offlineBanner">
-            <span id="offlineText">📡 You're offline. Some features may be limited.</span>
+            <span id="offlineText" data-i18n="status.offline">📡 You're offline. Some features may be limited.</span>
         </div>
 
         <!-- Install Prompt -->
@@ -989,13 +1047,13 @@ body.dark .input-field::placeholder {
             <div class="install-content">
                 <div class="install-icon">📱</div>
                 <div>
-                    <div style="font-weight: 700; margin-bottom: 0.25rem;">Install Tripset</div>
-                    <div style="font-size: 0.75rem; color: #64748b;">Install app for better experience</div>
+                    <div style="font-weight: 700; margin-bottom: 0.25rem;" data-i18n="install.title">Install Tripset</div>
+                    <div style="font-size: 0.75rem; color: #64748b;" data-i18n="install.subtitle">Install app for better experience</div>
                 </div>
             </div>
             <div class="install-buttons">
-                <button class="install-btn install-btn-primary" id="installBtn">Install</button>
-                <button class="install-btn install-btn-secondary" onclick="window.dismissInstallPrompt()">Later</button>
+                <button class="install-btn install-btn-primary" id="installBtn" data-i18n="install.install">Install</button>
+                <button class="install-btn install-btn-secondary" onclick="window.dismissInstallPrompt()" data-i18n="install.later">Later</button>
             </div>
         </div>
 
@@ -1003,11 +1061,11 @@ body.dark .input-field::placeholder {
         <div id="loginScreen" style="position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;z-index:2147483646 !important;display:flex !important;visibility:visible !important;opacity:1 !important;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%) !important;align-items:center !important;justify-content:center !important;padding:1rem !important;">
             <div style="background:white;border-radius:1.5rem;padding:2rem 2.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,0.4);max-width:22rem;width:100%;text-align:center;">
                 <h2 style="font-size:1.25rem;font-weight:800;color:#0f172a;margin-bottom:0.5rem;">Tripset</h2>
-                <p style="font-size:0.875rem;color:#64748b;margin-bottom:1.5rem;">Login required</p>
-                <input id="loginUsername" type="text" inputmode="numeric" autocomplete="username" placeholder="Mobile number" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
-                <input id="loginPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Password" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
-                <button type="button" onclick="window.doLogin()" style="width:100%;padding:0.75rem 1.5rem;background:linear-gradient(135deg,#F97316,#EA580C);color:white;font-weight:700;border-radius:0.75rem;border:none;cursor:pointer;font-size:1rem;">Login</button>
-                <p style="font-size:0.75rem;color:#64748b;margin-top:1rem;">Authorized user only</p>
+                <p style="font-size:0.875rem;color:#64748b;margin-bottom:1.5rem;" data-i18n="login.required">Login required</p>
+                <input id="loginUsername" type="text" inputmode="numeric" autocomplete="username" placeholder="Mobile number" data-i18n-placeholder="login.username" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
+                <input id="loginPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="login.password" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
+                <button type="button" onclick="window.doLogin()" style="width:100%;padding:0.75rem 1.5rem;background:linear-gradient(135deg,#F97316,#EA580C);color:white;font-weight:700;border-radius:0.75rem;border:none;cursor:pointer;font-size:1rem;" data-i18n="login.button">Login</button>
+                <p style="font-size:0.75rem;color:#64748b;margin-top:1rem;" data-i18n="login.authorized">Authorized user only</p>
             </div>
         </div>
 
@@ -1060,18 +1118,18 @@ body.dark .input-field::placeholder {
             <div class="pin-lock-modal" id="pinLockModal">
                 <div id="pinEnterMode">
                     <h2 class="pin-lock-title">Tripset</h2>
-                    <p class="pin-lock-subtitle">Enter 4-digit PIN</p>
+                    <p class="pin-lock-subtitle" data-i18n="pin.enterTitle">Enter 4-digit PIN</p>
                     <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinInput" class="pin-input" placeholder="••••" autocomplete="off">
-                    <button type="button" class="btn-unlock" onclick="window.submitPin()">Unlock</button>
+                    <button type="button" class="btn-unlock" onclick="window.submitPin()" data-i18n="pin.unlock">Unlock</button>
                 </div>
                 <div id="pinSetMode" class="hidden">
-                    <h2 class="pin-lock-title">Set PIN</h2>
-                    <p class="pin-lock-subtitle">Create a 4-digit PIN to lock the app</p>
+                    <h2 class="pin-lock-title" data-i18n="pin.setTitle">Set PIN</h2>
+                    <p class="pin-lock-subtitle" data-i18n="pin.setSubtitle">Create a 4-digit PIN to lock the app</p>
                     <div class="pin-set-form">
-                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetInput" class="pin-input" placeholder="New PIN" autocomplete="off">
-                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetConfirm" class="pin-input" placeholder="Confirm PIN" autocomplete="off">
+                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetInput" class="pin-input" placeholder="New PIN" data-i18n-placeholder="pin.newPin" autocomplete="off">
+                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetConfirm" class="pin-input" placeholder="Confirm PIN" data-i18n-placeholder="pin.confirmPin" autocomplete="off">
                     </div>
-                    <button type="button" class="btn-unlock" onclick="window.setPin()">Set PIN &amp; Unlock</button>
+                    <button type="button" class="btn-unlock" onclick="window.setPin()" data-i18n="pin.setAndUnlock">Set PIN &amp; Unlock</button>
                 </div>
             </div>
         </div>
@@ -1080,21 +1138,24 @@ body.dark .input-field::placeholder {
         <nav class="bg-[#020617] text-white shadow-xl sticky top-0 z-50 border-b border-slate-800">
             <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
                 <div class="text-xl font-extrabold text-orange-500 uppercase italic tracking-tighter">Tripset</div>
-                <div class="flex space-x-2 overflow-x-auto no-scrollbar py-2">
+                <button type="button" id="mobileMenuBtn" class="md:hidden" aria-label="Open menu" aria-expanded="false" onclick="window.toggleMobileNav()">
+                    ☰
+                </button>
+                <div class="hidden md:flex space-x-2 overflow-x-auto no-scrollbar py-2">
             
 
-                    <button id="btn-home" onclick="window.showTab('home')" class="nav-btn nav-btn-active">હોમ</button>
+                    <button id="btn-home" data-tab="home" onclick="window.showTab('home')" class="nav-btn nav-btn-active" data-i18n="nav.home">Home</button>
                     <button id="btn-dashboard"
             onclick="window.showTab('dashboard')"
-            class="nav-btn nav-btn-inactive">
-        ડેશબોર્ડ
+            class="nav-btn nav-btn-inactive" data-i18n="nav.dashboard" data-tab="dashboard">
+        Dashboard
     </button>
              
 
-                    <button id="btn-enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive">વિગત</button>
-                    <button id="btn-entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive">એન્ટ્રી</button>
-                    <button id="btn-company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive">કંપની</button>
-                    <button id="btn-settings" onclick="window.showTab('settings')" class="nav-btn nav-btn-inactive">સેટિંગ્સ</button>
+                    <button id="btn-enter-detail" data-tab="enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive" data-i18n="nav.entryForm">Details</button>
+                    <button id="btn-entries" data-tab="entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.entries">Entries</button>
+                    <button id="btn-company-entries" data-tab="company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.company">Company</button>
+                    <button id="btn-settings" data-tab="settings" onclick="window.showTab('settings')" class="nav-btn nav-btn-inactive" data-i18n="nav.settings">Settings</button>
 
                     <button onclick="window.toggleDarkMode()" 
         class="nav-btn nav-btn-inactive">
@@ -1104,40 +1165,65 @@ body.dark .input-field::placeholder {
                 </div>
             </div>
         </nav>
+        <div id="mobileNavBackdrop" onclick="window.toggleMobileNav(false)"></div>
+        <aside id="mobileNavMenu">
+            <div class="flex items-center justify-between mb-4">
+                <div class="text-lg font-extrabold text-orange-500 uppercase italic tracking-tight">Tripset</div>
+                <button type="button" class="nav-btn nav-btn-inactive" onclick="window.toggleMobileNav(false)">✕</button>
+            </div>
+            <div class="flex flex-col gap-2">
+                <button data-tab="home" onclick="window.showTab('home')" class="nav-btn nav-btn-active" data-i18n="nav.home">Home</button>
+                <button data-tab="dashboard" onclick="window.showTab('dashboard')" class="nav-btn nav-btn-inactive" data-i18n="nav.dashboard">Dashboard</button>
+                <button data-tab="enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive" data-i18n="nav.entryForm">Details</button>
+                <button data-tab="entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.entries">Entries</button>
+                <button data-tab="company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.company">Company</button>
+                <button data-tab="settings" onclick="window.showTab('settings')" class="nav-btn nav-btn-inactive" data-i18n="nav.settings">Settings</button>
+                <button onclick="window.toggleDarkMode()" class="nav-btn nav-btn-inactive">🌙</button>
+            </div>
+        </aside>
           
 
         <div class="max-w-7xl mx-auto p-4 md:p-8">
         <div id="settings" class="tab-content max-w-2xl mx-auto">
     <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200">
-        <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 uppercase">⚙ Settings</h2>
+        <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 uppercase" data-i18n="settings.title">⚙ Settings</h2>
 
         <div class="space-y-5">
             <div>
-                <label class="text-xs font-bold uppercase text-slate-500">Company Name</label>
+                <label class="text-xs font-bold uppercase text-slate-500" data-i18n="settings.companyName">Company Name</label>
                 <input type="text" id="companyName" class="input-field">
             </div>
 
             <div>
-                <label class="text-xs font-bold uppercase text-slate-500">Rate (₹ per KM)</label>
+                <label class="text-xs font-bold uppercase text-slate-500" data-i18n="settings.rate">Rate (₹ per KM)</label>
                 <input type="number" id="rateSetting" class="input-field">
+            </div>
+
+            <div>
+                <label class="text-xs font-bold uppercase text-slate-500" data-i18n="settings.language">Language</label>
+                <select id="languageSelect" class="input-field font-bold">
+                    <option value="en">English</option>
+                    <option value="gu">Gujarati</option>
+                    <option value="hi">Hindi</option>
+                </select>
             </div>
 
             <button onclick="window.saveSettings()" 
                 class="btn-primary py-3 text-lg">
-                Save Settings 💾
+                <span data-i18n="settings.save">Save Settings 💾</span>
             </button>
 
             <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700">💾 Backup & Restore</h3>
+                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700" data-i18n="settings.backupTitle">💾 Backup & Restore</h3>
                 
                 <div class="space-y-4">
                     <button onclick="window.downloadBackup()" 
                         class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                        📥 Download Backup
+                        <span data-i18n="settings.downloadBackup">📥 Download Backup</span>
                     </button>
 
                     <div>
-                        <label class="block text-xs font-bold uppercase text-slate-500 mb-2">
+                        <label class="block text-xs font-bold uppercase text-slate-500 mb-2" data-i18n="settings.restoreLabel">
                             Restore Backup (JSON File)
                         </label>
                         <input type="file" 
@@ -1147,33 +1233,33 @@ body.dark .input-field::placeholder {
                                onchange="window.handleRestoreBackup(event)">
                         <button onclick="document.getElementById('backupFileInput').click()" 
                             class="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                            📤 Restore Backup
+                            <span data-i18n="settings.restoreBackup">📤 Restore Backup</span>
                         </button>
                     </div>
                 </div>
             </div>
 
             <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700">🧾 Invoice</h3>
+                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700" data-i18n="settings.invoiceTitle">🧾 Invoice</h3>
                 <button onclick="window.openInvoiceModal()"
                     class="w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                    🧾 Invoice Generator
+                    <span data-i18n="settings.invoiceGenerator">🧾 Invoice Generator</span>
                 </button>
-                <p class="text-xs text-slate-500 mt-2">Select month and download invoice PDF.</p>
+                <p class="text-xs text-slate-500 mt-2" data-i18n="settings.invoiceHelp">Select month and download invoice PDF.</p>
             </div>
 
             <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700">🔒 PIN Lock</h3>
+                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700" data-i18n="settings.pinTitle">🔒 PIN Lock</h3>
                 <button onclick="window.openChangePinModal()" 
                     class="w-full bg-slate-700 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                    🔑 Change PIN
+                    <span data-i18n="settings.changePin">🔑 Change PIN</span>
                 </button>
             </div>
 
             <div class="border-t pt-6 mt-6">
                 <button onclick="window.doLogout()" 
                     class="w-full bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                    🚪 Logout
+                    <span data-i18n="settings.logout">🚪 Logout</span>
                 </button>
             </div>
         </div>
@@ -1185,25 +1271,25 @@ body.dark .input-field::placeholder {
             <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <h2 class="text-xl font-black text-slate-800 uppercase">🧾 Invoice Generator</h2>
-                        <p class="text-sm text-slate-500 mt-1">Select month and press Enter to download.</p>
+                        <h2 class="text-xl font-black text-slate-800 uppercase" data-i18n="invoice.modalTitle">🧾 Invoice Generator</h2>
+                        <p class="text-sm text-slate-500 mt-1" data-i18n="invoice.modalHelp">Select month and press Enter to download.</p>
                     </div>
                     <button onclick="window.closeInvoiceModal()" class="text-slate-400 hover:text-slate-600 text-xl font-black">✖</button>
                 </div>
 
                 <div class="mt-5">
-                    <label class="text-xs font-bold uppercase text-slate-500 block mb-2">Select Month</label>
+                    <label class="text-xs font-bold uppercase text-slate-500 block mb-2" data-i18n="invoice.selectMonth">Select Month</label>
                     <input type="month" id="invoiceMonthModal" class="input-field font-bold">
                 </div>
 
                 <div class="flex gap-3 mt-6">
                     <button onclick="window.closeInvoiceModal()"
                         class="flex-1 py-2.5 rounded-lg font-bold border border-slate-300 text-slate-700">
-                        Cancel
+                        <span data-i18n="common.cancel">Cancel</span>
                     </button>
                     <button onclick="window.generateInvoiceFromModal()"
                         class="flex-1 py-2.5 rounded-lg font-bold bg-orange-500 hover:bg-orange-600 text-white">
-                        Download PDF
+                        <span data-i18n="common.downloadPdf">Download PDF</span>
             </button>
         </div>
     </div>
@@ -1216,23 +1302,23 @@ body.dark .input-field::placeholder {
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 w-full">
         <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
-                <h2 class="text-lg font-extrabold uppercase text-slate-800">🧾 Invoice Generator</h2>
-                <p class="text-slate-500 text-sm mt-1">Generate monthly invoice directly from MongoDB trips.</p>
+                <h2 class="text-lg font-extrabold uppercase text-slate-800" data-i18n="invoice.modalTitle">🧾 Invoice Generator</h2>
+                <p class="text-slate-500 text-sm mt-1" data-i18n="dashboard.invoiceDescription">Generate monthly invoice directly from MongoDB trips.</p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
                 <div>
-                    <label class="text-xs font-bold uppercase text-slate-500 block mb-1">Select Month</label>
+                    <label class="text-xs font-bold uppercase text-slate-500 block mb-1" data-i18n="invoice.selectMonth">Select Month</label>
                     <input type="month" id="invoiceMonth" class="px-3 py-2 border rounded-lg font-bold">
                 </div>
                 <button onclick="window.generateInvoice()" class="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-md">
-                    Generate Invoice PDF
+                    <span data-i18n="dashboard.generateInvoicePdf">Generate Invoice PDF</span>
                 </button>
             </div>
         </div>
     </div>
 
     <div class="flex items-center gap-3">
-    <label class="text-xs font-bold uppercase text-slate-500">
+    <label class="text-xs font-bold uppercase text-slate-500" data-i18n="dashboard.selectMonth">
         Select Month
     </label>
 
@@ -1251,49 +1337,49 @@ body.dark .input-field::placeholder {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 
             <div class="dash-card">
-                <div class="dash-title">Total Trips</div>
+                <div class="dash-title" data-i18n="dashboard.totalTrips">Total Trips</div>
                 <div id="dashTrips" class="dash-value">0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Total KM</div>
+                <div class="dash-title" data-i18n="dashboard.totalKm">Total KM</div>
                 <div id="dashKM" class="dash-value">0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Entry Total</div>
+                <div class="dash-title" data-i18n="dashboard.entryTotal">Entry Total</div>
                 <div id="dashEntryTotal" class="dash-value text-emerald-600">₹0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Company Total</div>
+                <div class="dash-title" data-i18n="dashboard.companyTotal">Company Total</div>
                 <div id="dashCompanyTotal" class="dash-value text-orange-500">₹0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Today KM</div>
+                <div class="dash-title" data-i18n="dashboard.todayKm">Today KM</div>
                 <div id="dashTodayKM" class="dash-value">0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Today Amount</div>
+                <div class="dash-title" data-i18n="dashboard.todayAmount">Today Amount</div>
                 <div id="dashTodayAmt" class="dash-value">₹0</div>
             </div>
 
             <div class="dash-card">
-                <div class="dash-title">Net Profit</div>
+                <div class="dash-title" data-i18n="dashboard.netProfit">Net Profit</div>
                 <div id="dashNetProfit" class="dash-value text-green-600">₹0</div>
             </div>
 
           <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm md:col-span-3">
     <h3 class="text-lg font-black mb-4 text-orange-500 uppercase">
-        📈 Monthly Analytics
+        <span data-i18n="dashboard.monthlyAnalytics">📈 Monthly Analytics</span>
     </h3>
 
     <div class="flex justify-end mb-3">
         <button onclick="toggleChartType()" 
             class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
-            Toggle Chart 📊
+            <span data-i18n="dashboard.toggleChart">Toggle Chart 📊</span>
         </button>
     </div>
 
@@ -1302,52 +1388,52 @@ body.dark .input-field::placeholder {
 
 <div class="bg-white rounded-2xl p-6 border shadow-sm md:col-span-3 mt-6">
     <h3 class="text-lg font-black mb-4 text-emerald-600 uppercase">
-        📅 Daily Trend
+        <span data-i18n="dashboard.dailyTrend">📅 Daily Trend</span>
     </h3>
     <canvas id="dailyChart" height="100"></canvas>
 </div>
 
 <div class="bg-white rounded-2xl p-6 border shadow-sm md:col-span-3 mt-6">
     <h3 class="text-lg font-black mb-4 text-rose-500 uppercase">
-        💸 Profit Analysis
+        <span data-i18n="dashboard.profitAnalysis">💸 Profit Analysis</span>
     </h3>
     <canvas id="profitChart" height="100"></canvas>
 </div>
 
 <div class="bg-white rounded-2xl p-6 border shadow-sm md:col-span-3 mt-6">
     <h3 class="text-lg font-black mb-4 text-orange-500 uppercase">
-        📆 Weekly Report
+        <span data-i18n="dashboard.weeklyReport">📆 Weekly Report</span>
     </h3>
     <canvas id="weeklyChart" height="110"></canvas>
 </div>
 
 <div class="dash-card md:col-span-3 bg-indigo-50 border-indigo-100">
-    <div class="dash-title text-indigo-700">Monthly Summary</div>
+    <div class="dash-title text-indigo-700" data-i18n="dashboard.monthlySummary">Monthly Summary</div>
 
     <div class="flex flex-wrap gap-6 mt-3 text-sm font-bold text-slate-700">
 
         <div>
-            <div class="text-slate-500 text-xs">Month</div>
+            <div class="text-slate-500 text-xs" data-i18n="dashboard.month">Month</div>
             <div id="dashMonth">--</div>
         </div>
 
         <div>
-            <div class="text-slate-500 text-xs">Trips</div>
+            <div class="text-slate-500 text-xs" data-i18n="dashboard.trips">Trips</div>
             <div id="dashMonthTrips">0</div>
         </div>
 
         <div>
-            <div class="text-slate-500 text-xs">KM</div>
+            <div class="text-slate-500 text-xs" data-i18n="dashboard.km">KM</div>
             <div id="dashMonthKM">0</div>
         </div>
 
         <div>
-            <div class="text-slate-500 text-xs">Entry Total</div>
+            <div class="text-slate-500 text-xs" data-i18n="dashboard.entryTotal">Entry Total</div>
             <div id="dashMonthEntry">₹0</div>
         </div>
 
         <div>
-            <div class="text-slate-500 text-xs">Company Total</div>
+            <div class="text-slate-500 text-xs" data-i18n="dashboard.companyTotal">Company Total</div>
             <div id="dashMonthCompany">₹0</div>
         </div>
 
@@ -1359,60 +1445,70 @@ body.dark .input-field::placeholder {
             <div id="home" class="tab-content active py-12 text-center">
                 <div class="bg-white max-w-3xl mx-auto rounded-3xl p-10 shadow-sm border border-slate-200">
                     <h1 id="typing-text" class="text-4xl md:text-6xl font-extrabold welcome-gradient min-h-[4rem]"></h1>
-                    <p class="text-slate-500 mb-10 text-lg uppercase font-bold tracking-widest">Best Trip Management System </p>
-                    <button onclick="window.showTab('enter-detail')" class="bg-orange-500 hover:bg-orange-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg hover:bg-indigo-700 transition">નવી એન્ટ્રી શરૂ કરો ➔</button>
+                    <p class="text-slate-500 mb-10 text-lg uppercase font-bold tracking-widest" data-i18n="home.subtitle">Best Trip Management System </p>
+                    <button onclick="window.showTab('enter-detail')" class="bg-orange-500 hover:bg-orange-600 text-white px-10 py-4 rounded-xl font-bold text-xl shadow-lg hover:bg-indigo-700 transition" data-i18n="home.startEntry">Start New Entry ➔</button>
                 </div>
             </div>
 
             <div id="enter-detail" class="tab-content max-w-3xl mx-auto">
                 <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200">
-                    <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 text-slate-900 uppercase">ટ્રિપની વિગત ભરો</h2>
+                    <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 text-slate-900 uppercase" data-i18n="entry.title">Trip Details Form</h2>
                     <form id="tripForm" onsubmit="event.preventDefault(); window.saveToMongo();">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                            <div><label class="text-xs font-bold uppercase text-slate-500">તારીખ</label><input type="date" id="date" required class="input-field"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.date">Date</label><input type="date" id="date" required class="input-field"></div>
                             <div class="grid grid-cols-2 gap-2">
-                                <div><label class="text-xs font-bold uppercase text-slate-500">Pickup સમય</label><input type="time" id="pickupTime" required class="input-field"></div>
-                                <div><label class="text-xs font-bold uppercase text-slate-500">Drop સમય</label><input type="time" id="dropTime" required class="input-field"></div>
+                                <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.pickupTime">Pickup Time</label><input type="time" id="pickupTime" required class="input-field"></div>
+                                <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.dropTime">Drop Time</label><input type="time" id="dropTime" required class="input-field"></div>
                             </div>
-                            <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-slate-500">આઈડી (Trip ID)</label><input type="text" id="tripId" placeholder="Manual ID" required class="input-field font-mono"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500">ચઢવાનું સ્થળ</label><input type="text" id="pickup" list="locationList" placeholder="Pickup point" required class="input-field"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500">ઉતરવાનું સ્થળ</label><input type="text" id="drop" list="locationList" placeholder="Drop point" required class="input-field"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500">માણસો</label><input type="number" id="person" value="1" required class="input-field"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500">KM</label><input type="number" id="km" step="0.01" value="0" required oninput="window.calculateTotal()" class="input-field"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500">Rate</label><input type="number" id="rateDisplay" readonly class="input-field bg-slate-100 font-bold" value="21"></div>
-                            <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700">અન્ય (+)</label><input type="number" id="other" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field"></div>
+                            <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.tripId">Trip ID</label><input type="text" id="tripId" placeholder="Manual ID" data-i18n-placeholder="entry.tripIdPlaceholder" required class="input-field font-mono"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.pickup">Pickup</label><input type="text" id="pickup" list="locationList" placeholder="Pickup point" data-i18n-placeholder="entry.pickupPlaceholder" required class="input-field"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.drop">Drop</label><input type="text" id="drop" list="locationList" placeholder="Drop point" data-i18n-placeholder="entry.dropPlaceholder" required class="input-field"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.person">Persons</label><input type="number" id="person" value="1" required class="input-field"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="dashboard.km">KM</label><input type="number" id="km" step="0.01" value="0" required oninput="window.calculateTotal()" class="input-field"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500" data-i18n="entry.rate">Rate</label><input type="number" id="rateDisplay" readonly class="input-field bg-slate-100 font-bold" value="21"></div>
+                            <div><label class="text-xs font-bold uppercase text-slate-500 text-indigo-700" data-i18n="entry.otherPlus">Other (+)</label><input type="number" id="other" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field"></div>
                             <div><label class="text-xs font-bold uppercase text-slate-500 text-rose-500">CNG (-)</label><input type="number" id="cng" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field"></div>
-                            <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-rose-600">અન્ય ખર્ચ (બાદ થશે -)</label><input type="number" id="otherExpense" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field bg-rose-50"></div>
-                            <div class="md:col-span-2 bg-slate-900 p-6 rounded-xl mt-4 flex justify-between items-center text-white font-black"><span class="text-slate-400">TOTAL AMOUNT:</span><span id="totalDisplay" class="text-3xl">₹ 0.00</span></div>
-                            <button type="submit" id="saveBtn" class="md:col-span-2 btn-primary py-4 text-lg">Save to MongoDB 💾</button>
+                            <div class="md:col-span-2"><label class="text-xs font-bold uppercase text-rose-600" data-i18n="entry.otherExpense">Other Expense (-)</label><input type="number" id="otherExpense" step="0.01" value="0" oninput="window.calculateTotal()" class="input-field bg-rose-50"></div>
+                            <div class="md:col-span-2 bg-slate-900 p-6 rounded-xl mt-4 flex justify-between items-center text-white font-black"><span class="text-slate-400" data-i18n="entry.totalAmount">TOTAL AMOUNT:</span><span id="totalDisplay" class="text-3xl">₹ 0.00</span></div>
+                            <button type="submit" id="saveBtn" class="md:col-span-2 btn-primary py-4 text-lg" data-i18n="entry.save">Save to MongoDB 💾</button>
                         </div>
                     </form>
                 </div>
             </div>
 
             <div id="entries" class="tab-content bg-white rounded-2xl shadow-sm border overflow-hidden">
-                <div class="p-6 bg-slate-50 flex justify-between items-center border-b">
-                    <h2 class="font-black uppercase text-slate-800">એન્ટ્રી લિસ્ટ (જૂની થી નવી)</h2>
-                    <button onclick="window.downloadPDF('entries')" class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">📥 PDF</button>
+                <div class="p-6 bg-slate-50 flex flex-col md:flex-row md:justify-between md:items-center gap-3 border-b">
+                    <h2 class="font-black uppercase text-slate-800" data-i18n="entries.title">Entries List (Old to New)</h2>
+                    <div class="flex flex-wrap items-end gap-2">
+                        <div class="flex flex-col">
+                            <label for="entriesMonthFilter" class="text-[10px] font-bold uppercase text-slate-500" data-i18n="dashboard.selectMonth">Select Month</label>
+                            <input type="month" id="entriesMonthFilter" onchange="fetchTrips()" class="px-3 py-2 rounded-lg border font-bold">
+                        </div>
+                        <button onclick="window.applyEntriesMonthFilter()"
+                                class="bg-slate-700 text-white px-4 py-2 rounded-lg font-bold">
+                            <span data-i18n="common.apply">Apply</span>
+                        </button>
+                    <button onclick="window.downloadPDF('entries')" class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">📥 <span data-i18n="common.pdf">PDF</span></button>
                     <button onclick="window.exportExcel()" 
 class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
-📥 Excel
+📥 <span data-i18n="common.excel">Excel</span>
 </button>
+                    </div>
 
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                                <th class="p-4">તારીખ</th>
+                                <th class="p-4" data-i18n="entry.date">Date</th>
                                 <th class="p-4">ID</th>
                                 <th class="p-4 text-center">P</th>
-                                <th class="p-4">Route</th>
-                                <th class="p-4">KM</th>
-                                <th class="p-4">Time</th>
-                                <th class="p-4">Other Details</th>
-                                <th class="p-4 text-right">Total</th>
-                                <th class="p-4 text-center no-pdf">Action</th>
+                                <th class="p-4" data-i18n="entries.route">Route</th>
+                                <th class="p-4" data-i18n="dashboard.km">KM</th>
+                                <th class="p-4" data-i18n="entries.time">Time</th>
+                                <th class="p-4" data-i18n="entries.otherDetails">Other Details</th>
+                                <th class="p-4 text-right" data-i18n="entries.total">Total</th>
+                                <th class="p-4 text-center no-pdf" data-i18n="entries.action">Action</th>
                             </tr>
                         </thead>
                         <tbody id="listBody" class="divide-y text-slate-700"></tbody>
@@ -1423,20 +1519,20 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
 
             <div id="company-entries" class="tab-content bg-white rounded-2xl shadow-sm border overflow-hidden">
                 <div class="p-6 flex justify-between items-center bg-indigo-900 text-white">
-                    <h2 class="text-xl font-extrabold uppercase">કંપની એન્ટ્રી રિપોર્ટ</h2>
+                    <h2 class="text-xl font-extrabold uppercase" data-i18n="company.title">Company Entry Report</h2>
                     <div class="flex items-center gap-3">
             <input type="month" id="monthFilter"
                 class="px-3 py-2 rounded-lg text-black font-bold">
 
             <button onclick="window.applyMonthFilter()"
                     class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">
-                Apply
+                <span data-i18n="common.apply">Apply</span>
             </button>
         </div>
-                    <button onclick="window.downloadPDF('company-entries')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">📁 PDF</button>
+                    <button onclick="window.downloadPDF('company-entries')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">📁 <span data-i18n="common.pdf">PDF</span></button>
                     <button onclick="window.exportExcel()" 
 class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
-📥 Excel
+📥 <span data-i18n="common.excel">Excel</span>
 </button>
 
                 </div>
@@ -1444,13 +1540,13 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
                             <tr>
-                                <th class="p-4">તારીખ</th>
+                                <th class="p-4" data-i18n="entry.date">Date</th>
                                 <th class="p-4">ID</th>
                                 <th class="p-4 text-center">P</th>
-                                <th class="p-4">રૂટ</th>
-                                <th class="p-4">KM</th>
-                                <th class="p-4">સમય</th>
-                                <th class="p-4 text-right">ટોટલ (KM × Rate)</th>
+                                <th class="p-4" data-i18n="entries.route">Route</th>
+                                <th class="p-4" data-i18n="dashboard.km">KM</th>
+                                <th class="p-4" data-i18n="entries.time">Time</th>
+                                <th class="p-4 text-right" data-i18n="company.totalRate">Total (KM × Rate)</th>
                             </tr>
                         </thead>
                         <tbody id="companyTableBody" class="divide-y"></tbody>
@@ -1601,33 +1697,33 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         <button onclick="window.closeEditModal()" 
                 class="absolute top-3 right-3 text-slate-400 text-xl">✖</button>
 
-        <h2 class="text-xl font-black mb-4 text-orange-500 uppercase">
+        <h2 class="text-xl font-black mb-4 text-orange-500 uppercase" data-i18n="edit.title">
             Edit Trip
         </h2>
 
         <div class="grid grid-cols-2 gap-3">
             <input id="e-date" type="date" class="input-field">
-            <input id="e-tripId" type="text" placeholder="Trip ID" class="input-field">
+            <input id="e-tripId" type="text" placeholder="Trip ID" data-i18n-placeholder="entry.tripId" class="input-field">
 
-            <input id="e-pickup" type="text" placeholder="Pickup" class="input-field">
-            <input id="e-drop" type="text" placeholder="Drop" class="input-field">
+            <input id="e-pickup" type="text" placeholder="Pickup" data-i18n-placeholder="entry.pickup" class="input-field">
+            <input id="e-drop" type="text" placeholder="Drop" data-i18n-placeholder="entry.drop" class="input-field">
 
-            <input id="e-person" type="number" placeholder="Persons" class="input-field">
+            <input id="e-person" type="number" placeholder="Persons" data-i18n-placeholder="entry.person" class="input-field">
             <input id="e-km" type="number" step="0.01" placeholder="KM" class="input-field">
 
-            <input id="e-other" type="number" step="0.01" placeholder="Other (+)" class="input-field">
+            <input id="e-other" type="number" step="0.01" placeholder="Other (+)" data-i18n-placeholder="entry.otherPlus" class="input-field">
             <input id="e-cng" type="number" step="0.01" placeholder="CNG (-)" class="input-field">
 
-            <input id="e-exp" type="number" step="0.01" placeholder="Other Expense (-)" class="input-field">
+            <input id="e-exp" type="number" step="0.01" placeholder="Other Expense (-)" data-i18n-placeholder="entry.otherExpense" class="input-field">
 
             <div class="col-span-2 bg-slate-900 text-white p-4 rounded-xl flex justify-between">
-                <span class="text-slate-400 font-bold">Total</span>
+                <span class="text-slate-400 font-bold" data-i18n="entries.total">Total</span>
                 <span id="e-total" class="font-black text-xl">₹ 0.00</span>
             </div>
 
             <button onclick="window.updateTrip()" 
                     class="col-span-2 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-black">
-                Update Trip 🔄
+                <span data-i18n="edit.update">Update Trip 🔄</span>
             </button>
         </div>
     </div>
@@ -1636,13 +1732,13 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         <!-- Change PIN Modal -->
         <div id="changePinModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                <h2 class="text-xl font-black mb-4 text-slate-800 uppercase">🔑 Change PIN</h2>
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinCurrent" class="input-field" placeholder="Current PIN" autocomplete="off">
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinNew" class="input-field" placeholder="New PIN" autocomplete="off">
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinConfirm" class="input-field" placeholder="Confirm New PIN" autocomplete="off">
+                <h2 class="text-xl font-black mb-4 text-slate-800 uppercase" data-i18n="pin.changeTitle">🔑 Change PIN</h2>
+                <input type="password" inputmode="numeric" maxlength="4" id="changePinCurrent" class="input-field" placeholder="Current PIN" data-i18n-placeholder="pin.currentPin" autocomplete="off">
+                <input type="password" inputmode="numeric" maxlength="4" id="changePinNew" class="input-field" placeholder="New PIN" data-i18n-placeholder="pin.newPin" autocomplete="off">
+                <input type="password" inputmode="numeric" maxlength="4" id="changePinConfirm" class="input-field" placeholder="Confirm New PIN" data-i18n-placeholder="pin.confirmNewPin" autocomplete="off">
                 <div class="flex gap-3 mt-4">
-                    <button onclick="window.closeChangePinModal()" class="flex-1 py-2 rounded-lg font-bold border border-slate-300 text-slate-700">Cancel</button>
-                    <button onclick="window.saveNewPin()" class="flex-1 py-2 rounded-lg font-bold bg-orange-500 text-white">Save PIN</button>
+                    <button onclick="window.closeChangePinModal()" class="flex-1 py-2 rounded-lg font-bold border border-slate-300 text-slate-700" data-i18n="common.cancel">Cancel</button>
+                    <button onclick="window.saveNewPin()" class="flex-1 py-2 rounded-lg font-bold bg-orange-500 text-white" data-i18n="pin.savePin">Save PIN</button>
         </div>
     </div>
 </div>
@@ -1702,6 +1798,345 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 document.body.style.removeProperty('height');
             }
         }
+
+        window.toggleMobileNav = function(forceOpen) {
+            var menu = document.getElementById('mobileNavMenu');
+            var backdrop = document.getElementById('mobileNavBackdrop');
+            var btn = document.getElementById('mobileMenuBtn');
+            if (!menu || !backdrop) return;
+
+            if (window.innerWidth >= 768) {
+                menu.classList.remove('open');
+                backdrop.style.display = 'none';
+                document.body.classList.remove('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+                return;
+            }
+
+            var open = menu.classList.contains('open');
+            var shouldOpen = (typeof forceOpen === 'boolean') ? forceOpen : !open;
+
+            if (shouldOpen) {
+                menu.classList.add('open');
+                backdrop.style.display = 'block';
+                document.body.classList.add('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'true');
+            } else {
+                menu.classList.remove('open');
+                backdrop.style.display = 'none';
+                document.body.classList.remove('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        };
+
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 768) window.toggleMobileNav(false);
+        });
+
+        var LANGUAGE_STORAGE_KEY = 'tripset_language';
+        var SUPPORTED_LANGUAGES = ['en', 'gu', 'hi'];
+
+        var i18nResources = {
+            en: {
+                translation: {
+                    nav: { home: "Home", dashboard: "Dashboard", entryForm: "Details", entries: "Entries", company: "Company", settings: "Settings" },
+                    login: { required: "Login required", username: "Mobile number", password: "Password", button: "Login", authorized: "Authorized user only" },
+                    install: { title: "Install Tripset", subtitle: "Install app for better experience", install: "Install", later: "Later" },
+                    pin: {
+                        enterTitle: "Enter 4-digit PIN", unlock: "Unlock", setTitle: "Set PIN", setSubtitle: "Create a 4-digit PIN to lock the app",
+                        newPin: "New PIN", confirmPin: "Confirm PIN", setAndUnlock: "Set PIN & Unlock",
+                        changeTitle: "Change PIN", currentPin: "Current PIN", confirmNewPin: "Confirm New PIN", savePin: "Save PIN"
+                    },
+                    settings: {
+                        title: "Settings", companyName: "Company Name", rate: "Rate (₹ per KM)", language: "Language",
+                        save: "Save Settings 💾", backupTitle: "Backup & Restore", downloadBackup: "📥 Download Backup",
+                        restoreLabel: "Restore Backup (JSON File)", restoreBackup: "📤 Restore Backup",
+                        invoiceTitle: "Invoice", invoiceGenerator: "🧾 Invoice Generator", invoiceHelp: "Select month and download invoice PDF.",
+                        pinTitle: "PIN Lock", changePin: "🔑 Change PIN", logout: "🚪 Logout"
+                    },
+                    dashboard: {
+                        invoiceDescription: "Generate monthly invoice directly from MongoDB trips.",
+                        generateInvoicePdf: "Generate Invoice PDF", selectMonth: "Select Month",
+                        totalTrips: "Total Trips", totalKm: "Total KM", entryTotal: "Entry Total", companyTotal: "Company Total",
+                        todayKm: "Today KM", todayAmount: "Today Amount", netProfit: "Net Profit",
+                        monthlyAnalytics: "📈 Monthly Analytics", toggleChart: "Toggle Chart 📊",
+                        dailyTrend: "📅 Daily Trend", profitAnalysis: "💸 Profit Analysis", weeklyReport: "📆 Weekly Report",
+                        monthlySummary: "Monthly Summary", month: "Month", trips: "Trips", km: "KM"
+                    },
+                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlesh Bhai" },
+                    entry: {
+                        title: "Trip Details Form", date: "Date", pickupTime: "Pickup Time", dropTime: "Drop Time",
+                        tripId: "Trip ID", tripIdPlaceholder: "Manual ID", pickup: "Pickup", pickupPlaceholder: "Pickup point",
+                        drop: "Drop", dropPlaceholder: "Drop point", person: "Persons", rate: "Rate",
+                        otherPlus: "Other (+)", otherExpense: "Other Expense (-)", totalAmount: "TOTAL AMOUNT:",
+                        save: "Save to MongoDB 💾"
+                    },
+                    entries: { title: "Entries List (Old to New)", route: "Route", time: "Time", otherDetails: "Other Details", total: "Total", action: "Action" },
+                    company: { title: "Company Entry Report", totalRate: "Total (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 Invoice Generator", modalHelp: "Select month and press Enter to download.", selectMonth: "Select Month",
+                        monthlyTripInvoice: "Monthly Trip Invoice", invoiceMonthLabel: "Invoice Month:", generatedLabel: "Generated:",
+                        totals: "Totals", expenseBreakdown: "Expense Breakdown", authorizedSignatory: "Authorised Signatory", thankYou: "Thank you."
+                    },
+                    edit: { title: "Edit Trip", update: "Update Trip 🔄" },
+                    common: { cancel: "Cancel", downloadPdf: "Download PDF", pdf: "PDF", excel: "Excel", apply: "Apply" },
+                    chart: { totalKm: "Total KM", revenue: "Revenue ₹", trips: "Trips", profit: "Profit ₹" },
+                    table: { otherPlus: "Other:+₹", cngMinus: "CNG:-₹", expMinus: "Exp:-₹", editTitle: "Edit", deleteTitle: "Delete", tripsPrefix: "Trips: ", grandTotal: "Grand Total" },
+                    status: { online: "✅ Back online!", offline: "📡 You're offline. Some features may be limited." },
+                    toast: {
+                        enter4Digits: "Please enter 4 digits", wrongPin: "Wrong PIN", pinVerifyFailed: "PIN verify failed",
+                        enter4DigitsPin: "Enter 4 digits for PIN", pinMismatch: "PINs do not match", pinSetFailed: "PIN set failed", pinSet: "PIN set",
+                        newPin4Digits: "New PIN must be 4 digits", newPinMismatch: "New PINs do not match", currentPinWrong: "Current PIN is wrong",
+                        pinChanged: "PIN changed", pinChangeFailed: "PIN change failed",
+                        appInstalled: "App installed successfully! 🎉", installNotAvailable: "Installation not available", installingApp: "Installing app...",
+                        newVersion: "New version available! Refresh to update.", noChartData: "No data for chart ❌",
+                        settingsSaved: "Settings Saved ✅", settingsFailed: "Failed to save settings ❌",
+                        preparingExcel: "Preparing Company Excel... ⏳", noData: "No data found ❌", excelDownloaded: "Company Excel Downloaded ✅",
+                        preparingBackup: "Preparing backup... ⏳", noTripsBackup: "No trips to backup ❌", backupDownloaded: "Backup downloaded: {{count}} trips ✅",
+                        backupDownloadFailed: "Failed to download backup ❌", invalidFileType: "Invalid file type. Please select a JSON file ❌",
+                        readingBackup: "Reading backup file... ⏳", invalidJson: "Invalid JSON format ❌",
+                        invalidBackupFormat: "Invalid backup format. Expected array of trips ❌", backupEmpty: "Backup file is empty ❌",
+                        invalidTripData: "Invalid trip data: {{detail}} ❌", restoreConfirm: "Restore {{count}} trips? This will add them to your database.",
+                        restoringTrips: "Restoring {{count}} trips... ⏳",
+                        restoredTrips: "Successfully restored {{count}} trips ✅", restoreFailed: "Restore failed: {{error}} ❌",
+                        restorePartial: "Note: {{count}} trips were inserted before error.", restoreFailedGeneric: "Failed to restore backup ❌",
+                        darkModeOn: "Dark Mode ON 🌙", lightModeOn: "Light Mode ☀️",
+                        errorNoTripId: "Error: No trip ID provided ❌", tripsNotLoaded: "Trips not loaded yet. Please wait... ❌",
+                        tripNotFound: "Trip not found ❌", tripUpdated: "Trip Updated ✅", dataSaved: "Data Saved! ✅",
+                        tripDeleted: "Trip deleted successfully ✅", deleteConfirm: "Are you sure you want to delete this trip?",
+                        deleteFailed: "Delete failed: {{error}} ❌", deleteError: "Error deleting trip ❌",
+                        iosInstallGuide: "On iPhone: tap Share, then Add to Home Screen.",
+                        pdfGenerating: "PDF Generating... ⏳", downloadComplete: "Download Complete! 📄",
+                        selectInvoiceMonth: "Please select invoice month", generatingInvoice: "Generating invoice...",
+                        invoiceFailed: "Failed to generate invoice", invoiceTemplateMissing: "Invoice template missing",
+                        invoiceDownloaded: "Invoice downloaded ✅", invoiceGenerationFailed: "Invoice generation failed"
+                    }
+                }
+            },
+            gu: {
+                translation: {
+                    nav: { home: "હોમ", dashboard: "ડેશબોર્ડ", entryForm: "વિગત", entries: "એન્ટ્રી", company: "કંપની", settings: "સેટિંગ્સ" },
+                    login: { required: "લૉગિન જરૂરી છે", username: "મોબાઇલ નંબર", password: "પાસવર્ડ", button: "લૉગિન", authorized: "માત્ર અધિકૃત યુઝર" },
+                    install: { title: "Tripset ઇન્સ્ટોલ કરો", subtitle: "સારો અનુભવ માટે એપ ઇન્સ્ટોલ કરો", install: "ઇન્સ્ટોલ", later: "પછી" },
+                    pin: {
+                        enterTitle: "4 અંકનો PIN દાખલ કરો", unlock: "અનલૉક", setTitle: "PIN સેટ કરો", setSubtitle: "એપ લૉક કરવા 4 અંકનો PIN બનાવો",
+                        newPin: "નવો PIN", confirmPin: "PIN કન્ફર્મ કરો", setAndUnlock: "PIN સેટ કરો અને અનલૉક કરો",
+                        changeTitle: "PIN બદલો", currentPin: "હાલનો PIN", confirmNewPin: "નવો PIN કન્ફર્મ કરો", savePin: "PIN સેવ કરો"
+                    },
+                    settings: {
+                        title: "સેટિંગ્સ", companyName: "કંપની નામ", rate: "રેટ (₹ પ્રતિ KM)", language: "ભાષા",
+                        save: "સેટિંગ્સ સેવ કરો 💾", backupTitle: "બેકઅપ અને રિસ્ટોર", downloadBackup: "📥 બેકઅપ ડાઉનલોડ",
+                        restoreLabel: "બેકઅપ રિસ્ટોર કરો (JSON ફાઇલ)", restoreBackup: "📤 બેકઅપ રિસ્ટોર",
+                        invoiceTitle: "ઇન્વૉઇસ", invoiceGenerator: "🧾 ઇન્વૉઇસ જનરેટર", invoiceHelp: "મહિનો પસંદ કરો અને PDF ડાઉનલોડ કરો.",
+                        pinTitle: "PIN લૉક", changePin: "🔑 PIN બદલો", logout: "🚪 લૉગઆઉટ"
+                    },
+                    dashboard: {
+                        invoiceDescription: "MongoDB ટ્રિપ પરથી માસિક ઇન્વૉઇસ બનાવો.",
+                        generateInvoicePdf: "ઇન્વૉઇસ PDF બનાવો", selectMonth: "મહિનો પસંદ કરો",
+                        totalTrips: "કુલ ટ્રિપ", totalKm: "કુલ KM", entryTotal: "એન્ટ્રી ટોટલ", companyTotal: "કંપની ટોટલ",
+                        todayKm: "આજનું KM", todayAmount: "આજની રકમ", netProfit: "શુદ્ધ નફો",
+                        monthlyAnalytics: "📈 માસિક એનાલિટિક્સ", toggleChart: "ચાર્ટ બદલો 📊",
+                        dailyTrend: "📅 દૈનિક ટ્રેન્ડ", profitAnalysis: "💸 નફા વિશ્લેષણ", weeklyReport: "📆 સાપ્તાહિક રિપોર્ટ",
+                        monthlySummary: "માસિક સારાંશ", month: "મહિનો", trips: "ટ્રિપ", km: "KM"
+                    },
+                    home: { subtitle: "સર્વશ્રેષ્ઠ ટ્રિપ મેનેજમેન્ટ સિસ્ટમ", startEntry: "નવી એન્ટ્રી શરૂ કરો ➔", welcome: "સ્વાગત છે કમલેશ ભાઈ" },
+                    entry: {
+                        title: "ટ્રિપની વિગત ભરો", date: "તારીખ", pickupTime: "પિકઅપ સમય", dropTime: "ડ્રોપ સમય",
+                        tripId: "ટ્રિપ ID", tripIdPlaceholder: "મેન્યુઅલ ID", pickup: "પિકઅપ", pickupPlaceholder: "પિકઅપ પોઈન્ટ",
+                        drop: "ડ્રોપ", dropPlaceholder: "ડ્રોપ પોઈન્ટ", person: "માણસો", rate: "રેટ",
+                        otherPlus: "અન્ય (+)", otherExpense: "અન્ય ખર્ચ (-)", totalAmount: "કુલ રકમ:", save: "MongoDB માં સેવ કરો 💾"
+                    },
+                    entries: { title: "એન્ટ્રી લિસ્ટ (જૂની થી નવી)", route: "રૂટ", time: "સમય", otherDetails: "અન્ય વિગતો", total: "ટોટલ", action: "ક્રિયા" },
+                    company: { title: "કંપની એન્ટ્રી રિપોર્ટ", totalRate: "ટોટલ (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 ઇન્વૉઇસ જનરેટર", modalHelp: "મહિનો પસંદ કરો અને Enter દબાવો.", selectMonth: "મહિનો પસંદ કરો",
+                        monthlyTripInvoice: "માસિક ટ્રિપ ઇન્વૉઇસ", invoiceMonthLabel: "ઇન્વૉઇસ મહિનો:", generatedLabel: "બનાવેલ:",
+                        totals: "કુલ", expenseBreakdown: "ખર્ચ વિગત", authorizedSignatory: "અધિકૃત સહી", thankYou: "આભાર."
+                    },
+                    edit: { title: "ટ્રિપ એડિટ કરો", update: "ટ્રિપ અપડેટ કરો 🔄" },
+                    common: { cancel: "રદ્દ કરો", downloadPdf: "PDF ડાઉનલોડ", pdf: "PDF", excel: "Excel", apply: "લાગુ કરો" },
+                    chart: { totalKm: "કુલ KM", revenue: "આવક ₹", trips: "ટ્રિપ", profit: "નફો ₹" },
+                    table: { otherPlus: "અન્ય:+₹", cngMinus: "CNG:-₹", expMinus: "ખર્ચ:-₹", editTitle: "એડિટ", deleteTitle: "ડિલીટ", tripsPrefix: "ટ્રિપ: ", grandTotal: "ગ્રાન્ડ ટોટલ" },
+                    status: { online: "✅ ફરી ઑનલાઇન", offline: "📡 તમે ઑફલાઇન છો. કેટલાક ફીચર્સ મર્યાદિત હોઈ શકે." },
+                    toast: {
+                        enter4Digits: "કૃપા કરીને 4 અંક નાખો", wrongPin: "ખોટો PIN", pinVerifyFailed: "PIN ચકાસણી નિષ્ફળ",
+                        enter4DigitsPin: "PIN માટે 4 અંક નાખો", pinMismatch: "PIN મેળ ખાતા નથી", pinSetFailed: "PIN સેટ નિષ્ફળ", pinSet: "PIN સેટ થયું",
+                        newPin4Digits: "નવો PIN 4 અંકનો હોવો જોઈએ", newPinMismatch: "નવો PIN મેળ ખાતો નથી", currentPinWrong: "હાલનો PIN ખોટો છે",
+                        pinChanged: "PIN બદલાયો", pinChangeFailed: "PIN બદલવામાં નિષ્ફળ",
+                        appInstalled: "એપ સફળતાપૂર્વક ઇન્સ્ટોલ થઈ! 🎉", installNotAvailable: "ઇન્સ્ટોલેશન ઉપલબ્ધ નથી", installingApp: "એપ ઇન્સ્ટોલ થઈ રહી છે...",
+                        newVersion: "નવી આવૃત્તિ ઉપલબ્ધ છે! અપડેટ માટે રિફ્રેશ કરો.", noChartData: "ચાર્ટ માટે ડેટા નથી ❌",
+                        settingsSaved: "સેટિંગ્સ સેવ થઈ ✅", settingsFailed: "સેટિંગ્સ સેવ નિષ્ફળ ❌",
+                        preparingExcel: "કંપની Excel તૈયાર થાય છે... ⏳", noData: "ડેટા મળ્યો નથી ❌", excelDownloaded: "કંપની Excel ડાઉનલોડ થયું ✅",
+                        preparingBackup: "બેકઅપ તૈયાર થાય છે... ⏳", noTripsBackup: "બેકઅપ માટે ટ્રિપ નથી ❌", backupDownloaded: "બેકઅપ ડાઉનલોડ: {{count}} ટ્રિપ ✅",
+                        backupDownloadFailed: "બેકઅપ ડાઉનલોડ નિષ્ફળ ❌", invalidFileType: "અયોગ્ય ફાઇલ પ્રકાર. JSON ફાઇલ પસંદ કરો ❌",
+                        readingBackup: "બેકઅપ ફાઇલ વાંચી રહ્યા છીએ... ⏳", invalidJson: "અયોગ્ય JSON ફોર્મેટ ❌",
+                        invalidBackupFormat: "અયોગ્ય બેકઅપ ફોર્મેટ. ટ્રિપ એરે જરૂરી છે ❌", backupEmpty: "બેકઅપ ફાઇલ ખાલી છે ❌",
+                        invalidTripData: "અયોગ્ય ટ્રિપ ડેટા: {{detail}} ❌", restoreConfirm: "{{count}} ટ્રિપ રિસ્ટોર કરશો? આ તમારા ડેટાબેઝમાં ઉમેરાશે.",
+                        restoringTrips: "{{count}} ટ્રિપ રિસ્ટોર થાય છે... ⏳",
+                        restoredTrips: "{{count}} ટ્રિપ સફળતાપૂર્વક રિસ્ટોર ✅", restoreFailed: "રિસ્ટોર નિષ્ફળ: {{error}} ❌",
+                        restorePartial: "નોંધ: ભૂલ પહેલાં {{count}} ટ્રિપ ઇન્સર્ટ થઈ.", restoreFailedGeneric: "બેકઅપ રિસ્ટોર નિષ્ફળ ❌",
+                        darkModeOn: "ડાર્ક મોડ ON 🌙", lightModeOn: "લાઇટ મોડ ☀️",
+                        errorNoTripId: "ભૂલ: ટ્રિપ ID આપવામાં નથી ❌", tripsNotLoaded: "ટ્રિપ હજુ લોડ નથી. રાહ જુઓ... ❌",
+                        tripNotFound: "ટ્રિપ મળી નથી ❌", tripUpdated: "ટ્રિપ અપડેટ થઈ ✅", dataSaved: "ડેટા સેવ થયું! ✅",
+                        tripDeleted: "ટ્રિપ સફળતાપૂર્વક ડિલીટ ✅", deleteConfirm: "શું તમે આ ટ્રિપ ડિલીટ કરવા માંગો છો?",
+                        deleteFailed: "ડિલીટ નિષ્ફળ: {{error}} ❌", deleteError: "ટ્રિપ ડિલીટ ભૂલ ❌",
+                        iosInstallGuide: "iPhone પર: Share દબાવો, પછી Add to Home Screen પસંદ કરો.",
+                        pdfGenerating: "PDF બને છે... ⏳", downloadComplete: "ડાઉનલોડ પૂર્ણ! 📄",
+                        selectInvoiceMonth: "કૃપા કરીને ઇન્વૉઇસ મહિનો પસંદ કરો", generatingInvoice: "ઇન્વૉઇસ બને છે...",
+                        invoiceFailed: "ઇન્વૉઇસ જનરેટ નિષ્ફળ", invoiceTemplateMissing: "ઇન્વૉઇસ ટેમ્પલેટ મળ્યો નથી",
+                        invoiceDownloaded: "ઇન્વૉઇસ ડાઉનલોડ થયું ✅", invoiceGenerationFailed: "ઇન્વૉઇસ જનરેશન નિષ્ફળ"
+                    }
+                }
+            },
+            hi: {
+                translation: {
+                    nav: { home: "होम", dashboard: "डैशबोर्ड", entryForm: "विवरण", entries: "एंट्री", company: "कंपनी", settings: "सेटिंग्स" },
+                    login: { required: "लॉगिन आवश्यक है", username: "मोबाइल नंबर", password: "पासवर्ड", button: "लॉगिन", authorized: "केवल अधिकृत उपयोगकर्ता" },
+                    install: { title: "Tripset इंस्टॉल करें", subtitle: "बेहतर अनुभव के लिए ऐप इंस्टॉल करें", install: "इंस्टॉल", later: "बाद में" },
+                    pin: {
+                        enterTitle: "4 अंकों का PIN दर्ज करें", unlock: "अनलॉक", setTitle: "PIN सेट करें", setSubtitle: "ऐप लॉक करने के लिए 4 अंकों का PIN बनाएं",
+                        newPin: "नया PIN", confirmPin: "PIN पुष्टि करें", setAndUnlock: "PIN सेट करें और अनलॉक करें",
+                        changeTitle: "PIN बदलें", currentPin: "वर्तमान PIN", confirmNewPin: "नया PIN पुष्टि करें", savePin: "PIN सेव करें"
+                    },
+                    settings: {
+                        title: "सेटिंग्स", companyName: "कंपनी नाम", rate: "रेट (₹ प्रति KM)", language: "भाषा",
+                        save: "सेटिंग्स सेव करें 💾", backupTitle: "बैकअप और रिस्टोर", downloadBackup: "📥 बैकअप डाउनलोड",
+                        restoreLabel: "बैकअप रिस्टोर करें (JSON फ़ाइल)", restoreBackup: "📤 बैकअप रिस्टोर",
+                        invoiceTitle: "इनवॉइस", invoiceGenerator: "🧾 इनवॉइस जनरेटर", invoiceHelp: "महीना चुनें और PDF डाउनलोड करें।",
+                        pinTitle: "PIN लॉक", changePin: "🔑 PIN बदलें", logout: "🚪 लॉगआउट"
+                    },
+                    dashboard: {
+                        invoiceDescription: "MongoDB ट्रिप से मासिक इनवॉइस बनाएं।",
+                        generateInvoicePdf: "इनवॉइस PDF बनाएं", selectMonth: "महीना चुनें",
+                        totalTrips: "कुल ट्रिप", totalKm: "कुल KM", entryTotal: "एंट्री टोटल", companyTotal: "कंपनी टोटल",
+                        todayKm: "आज का KM", todayAmount: "आज की राशि", netProfit: "शुद्ध लाभ",
+                        monthlyAnalytics: "📈 मासिक एनालिटिक्स", toggleChart: "चार्ट बदलें 📊",
+                        dailyTrend: "📅 दैनिक ट्रेंड", profitAnalysis: "💸 लाभ विश्लेषण", weeklyReport: "📆 साप्ताहिक रिपोर्ट",
+                        monthlySummary: "मासिक सारांश", month: "महीना", trips: "ट्रिप", km: "KM"
+                    },
+                    home: { subtitle: "सर्वश्रेष्ठ ट्रिप मैनेजमेंट सिस्टम", startEntry: "नई एंट्री शुरू करें ➔", welcome: "स्वागत है कमलेश भाई" },
+                    entry: {
+                        title: "ट्रिप विवरण भरें", date: "तारीख", pickupTime: "पिकअप समय", dropTime: "ड्रॉप समय",
+                        tripId: "ट्रिप ID", tripIdPlaceholder: "मैनुअल ID", pickup: "पिकअप", pickupPlaceholder: "पिकअप पॉइंट",
+                        drop: "ड्रॉप", dropPlaceholder: "ड्रॉप पॉइंट", person: "व्यक्ति", rate: "रेट",
+                        otherPlus: "अन्य (+)", otherExpense: "अन्य खर्च (-)", totalAmount: "कुल राशि:", save: "MongoDB में सेव करें 💾"
+                    },
+                    entries: { title: "एंट्री सूची (पुरानी से नई)", route: "रूट", time: "समय", otherDetails: "अन्य विवरण", total: "कुल", action: "एक्शन" },
+                    company: { title: "कंपनी एंट्री रिपोर्ट", totalRate: "कुल (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 इनवॉइस जनरेटर", modalHelp: "महीना चुनें और Enter दबाएं।", selectMonth: "महीना चुनें",
+                        monthlyTripInvoice: "मासिक ट्रिप इनवॉइस", invoiceMonthLabel: "इनवॉइस महीना:", generatedLabel: "जनरेटेड:",
+                        totals: "कुल", expenseBreakdown: "खर्च विवरण", authorizedSignatory: "अधिकृत हस्ताक्षर", thankYou: "धन्यवाद।"
+                    },
+                    edit: { title: "ट्रिप एडिट करें", update: "ट्रिप अपडेट करें 🔄" },
+                    common: { cancel: "रद्द करें", downloadPdf: "PDF डाउनलोड", pdf: "PDF", excel: "Excel", apply: "लागू करें" },
+                    chart: { totalKm: "कुल KM", revenue: "राजस्व ₹", trips: "ट्रिप", profit: "लाभ ₹" },
+                    table: { otherPlus: "अन्य:+₹", cngMinus: "CNG:-₹", expMinus: "खर्च:-₹", editTitle: "एडिट", deleteTitle: "डिलीट", tripsPrefix: "ट्रिप: ", grandTotal: "ग्रैंड टोटल" },
+                    status: { online: "✅ फिर से ऑनलाइन", offline: "📡 आप ऑफलाइन हैं। कुछ फीचर्स सीमित हो सकते हैं।" },
+                    toast: {
+                        enter4Digits: "कृपया 4 अंक दर्ज करें", wrongPin: "गलत PIN", pinVerifyFailed: "PIN सत्यापन विफल",
+                        enter4DigitsPin: "PIN के लिए 4 अंक दर्ज करें", pinMismatch: "PIN मेल नहीं खाते", pinSetFailed: "PIN सेट विफल", pinSet: "PIN सेट हो गया",
+                        newPin4Digits: "नया PIN 4 अंकों का होना चाहिए", newPinMismatch: "नया PIN मेल नहीं खाता", currentPinWrong: "वर्तमान PIN गलत है",
+                        pinChanged: "PIN बदल गया", pinChangeFailed: "PIN बदलना विफल",
+                        appInstalled: "ऐप सफलतापूर्वक इंस्टॉल हुआ! 🎉", installNotAvailable: "इंस्टॉलेशन उपलब्ध नहीं", installingApp: "ऐप इंस्टॉल हो रहा है...",
+                        newVersion: "नया संस्करण उपलब्ध है! अपडेट के लिए रिफ्रेश करें।", noChartData: "चार्ट के लिए डेटा नहीं ❌",
+                        settingsSaved: "सेटिंग्स सेव हो गई ✅", settingsFailed: "सेटिंग्स सेव विफल ❌",
+                        preparingExcel: "कंपनी Excel तैयार हो रही है... ⏳", noData: "डेटा नहीं मिला ❌", excelDownloaded: "कंपनी Excel डाउनलोड हो गई ✅",
+                        preparingBackup: "बैकअप तैयार हो रहा है... ⏳", noTripsBackup: "बैकअप के लिए ट्रिप नहीं ❌", backupDownloaded: "बैकअप डाउनलोड: {{count}} ट्रिप ✅",
+                        backupDownloadFailed: "बैकअप डाउनलोड विफल ❌", invalidFileType: "अमान्य फाइल प्रकार। कृपया JSON फाइल चुनें ❌",
+                        readingBackup: "बैकअप फाइल पढ़ी जा रही है... ⏳", invalidJson: "अमान्य JSON फॉर्मेट ❌",
+                        invalidBackupFormat: "अमान्य बैकअप फॉर्मेट। ट्रिप एरे अपेक्षित ❌", backupEmpty: "बैकअप फाइल खाली है ❌",
+                        invalidTripData: "अमान्य ट्रिप डेटा: {{detail}} ❌", restoreConfirm: "{{count}} ट्रिप रिस्टोर करें? यह आपके डेटाबेस में जुड़ेंगी।",
+                        restoringTrips: "{{count}} ट्रिप रिस्टोर हो रही हैं... ⏳",
+                        restoredTrips: "{{count}} ट्रिप सफलतापूर्वक रिस्टोर ✅", restoreFailed: "रिस्टोर विफल: {{error}} ❌",
+                        restorePartial: "नोट: त्रुटि से पहले {{count}} ट्रिप इन्सर्ट हुईं।", restoreFailedGeneric: "बैकअप रिस्टोर विफल ❌",
+                        darkModeOn: "डार्क मोड ON 🌙", lightModeOn: "लाइट मोड ☀️",
+                        errorNoTripId: "त्रुटि: ट्रिप ID नहीं दी गई ❌", tripsNotLoaded: "ट्रिप अभी लोड नहीं हुई। कृपया प्रतीक्षा करें... ❌",
+                        tripNotFound: "ट्रिप नहीं मिली ❌", tripUpdated: "ट्रिप अपडेट हो गई ✅", dataSaved: "डेटा सेव हो गया! ✅",
+                        tripDeleted: "ट्रिप सफलतापूर्वक डिलीट ✅", deleteConfirm: "क्या आप सच में इस ट्रिप को डिलीट करना चाहते हैं?",
+                        deleteFailed: "डिलीट विफल: {{error}} ❌", deleteError: "ट्रिप डिलीट त्रुटि ❌",
+                        iosInstallGuide: "iPhone पर: Share दबाएं, फिर Add to Home Screen चुनें।",
+                        pdfGenerating: "PDF बन रही है... ⏳", downloadComplete: "डाउनलोड पूरा! 📄",
+                        selectInvoiceMonth: "कृपया इनवॉइस महीना चुनें", generatingInvoice: "इनवॉइस बन रही है...",
+                        invoiceFailed: "इनवॉइस जनरेट विफल", invoiceTemplateMissing: "इनवॉइस टेम्पलेट नहीं मिला",
+                        invoiceDownloaded: "इनवॉइस डाउनलोड हो गई ✅", invoiceGenerationFailed: "इनवॉइस जनरेशन विफल"
+                    }
+                }
+            }
+        };
+
+        function t(key, options) {
+            if (!window.i18next || typeof window.i18next.t !== 'function') return key;
+            return window.i18next.t(key, options);
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(function(el) {
+                var key = el.getAttribute('data-i18n');
+                if (!key) return;
+                el.textContent = t(key);
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+                var key = el.getAttribute('data-i18n-placeholder');
+                if (!key) return;
+                el.setAttribute('placeholder', t(key));
+            });
+
+            var lang = (window.i18next && window.i18next.language) ? window.i18next.language : 'en';
+            document.documentElement.lang = lang;
+            var languageSelect = document.getElementById('languageSelect');
+            if (languageSelect && languageSelect.value !== lang) languageSelect.value = lang;
+        }
+
+        function getSavedLanguage() {
+            try {
+                var saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+                if (saved && SUPPORTED_LANGUAGES.indexOf(saved) !== -1) return saved;
+            } catch (e) {}
+            return 'en';
+        }
+
+        function saveLanguage(lang) {
+            try {
+                localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+            } catch (e) {}
+        }
+
+        function initI18n() {
+            if (!window.i18next) return Promise.resolve();
+            var initialLang = getSavedLanguage();
+
+            return window.i18next.init({
+                lng: initialLang,
+                fallbackLng: 'en',
+                resources: i18nResources,
+                interpolation: { escapeValue: false }
+            }).then(function() {
+                applyTranslations();
+                var languageSelect = document.getElementById('languageSelect');
+                if (languageSelect) {
+                    languageSelect.value = window.i18next.language;
+                    languageSelect.addEventListener('change', function(e) {
+                        window.changeLanguage(e.target.value);
+                    });
+                }
+            }).catch(function(err) {
+                console.error('i18n init failed:', err);
+            });
+        }
+
+        window.changeLanguage = function(lang) {
+            if (!window.i18next || SUPPORTED_LANGUAGES.indexOf(lang) === -1) return;
+            window.i18next.changeLanguage(lang).then(function() {
+                saveLanguage(lang);
+                applyTranslations();
+                window.startTypingEffect();
+                if (window.currentTrips) renderTables(window.currentTrips);
+            }).catch(function(err) {
+                console.error('changeLanguage failed:', err);
+            });
+        };
 
         function hideSplashNow() {
             var splash = document.getElementById('splashScreen');
@@ -1785,10 +2220,12 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 if (invoiceMonth) invoiceMonth.value = currentMonth;
                 fetchTrips();
                 window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
             }).catch(function(err) {
                 console.error('loadSettings failed:', err);
                 fetchTrips();
                 window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
             });
         }
 
@@ -1865,7 +2302,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             if (!input) return;
             var val = (input.value || '').trim();
             if (val.length !== 4 || !/^\d{4}$/.test(val)) {
-                showToast('Please enter 4 digits');
+                showToast(t('toast.enter4Digits'));
                 return;
             }
             try {
@@ -1878,7 +2315,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     input.classList.add('error', 'pin-shake');
                     input.value = '';
                     input.focus();
-                    showToast('Wrong PIN');
+                    showToast(t('toast.wrongPin'));
                     setTimeout(function() {
                         input.classList.remove('pin-shake');
                         setTimeout(function() { input.classList.remove('error'); }, 400);
@@ -1888,7 +2325,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 input.value = '';
                 window.unlockScreen();
             } catch (e) {
-                showToast('PIN verify failed');
+                showToast(t('toast.pinVerifyFailed'));
             }
         };
 
@@ -1899,11 +2336,11 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var a = (inp.value || '').trim();
             var b = (conf.value || '').trim();
             if (a.length !== 4 || !/^\d{4}$/.test(a)) {
-                showToast('Enter 4 digits for PIN');
+                showToast(t('toast.enter4DigitsPin'));
                 return;
             }
             if (a !== b) {
-                showToast('PINs do not match');
+                showToast(t('toast.pinMismatch'));
                 conf.classList.add('error', 'pin-shake');
                 setTimeout(function() {
                     conf.classList.remove('pin-shake');
@@ -1918,14 +2355,14 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     body: JSON.stringify({ pin: a })
                 });
                 if (!res.ok) {
-                    showToast('PIN set failed');
+                    showToast(t('toast.pinSetFailed'));
                     return;
                 }
                 inp.value = ''; conf.value = '';
-                showToast('PIN set');
+                showToast(t('toast.pinSet'));
                 window.unlockScreen();
             } catch (e) {
-                showToast('PIN set failed');
+                showToast(t('toast.pinSetFailed'));
             }
         };
 
@@ -1951,11 +2388,11 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var n = (newPin.value || '').trim();
             var co = (conf.value || '').trim();
             if (n.length !== 4 || !/^\d{4}$/.test(n)) {
-                showToast('New PIN must be 4 digits');
+                showToast(t('toast.newPin4Digits'));
                 return;
             }
             if (n !== co) {
-                showToast('New PINs do not match');
+                showToast(t('toast.newPinMismatch'));
                 return;
             }
             (async function() {
@@ -1966,16 +2403,16 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         body: JSON.stringify({ currentPin: c, newPin: n })
                     });
                     if (!res.ok) {
-                        showToast('Current PIN is wrong');
+                        showToast(t('toast.currentPinWrong'));
                         cur.classList.add('error', 'pin-shake');
                         setTimeout(function() { cur.classList.remove('pin-shake', 'error'); }, 400);
                         return;
                     }
                     cur.value = ''; newPin.value = ''; conf.value = '';
                     window.closeChangePinModal();
-                    showToast('PIN changed');
+                    showToast(t('toast.pinChanged'));
                 } catch (e) {
-                    showToast('PIN change failed');
+                    showToast(t('toast.pinChangeFailed'));
                 }
             })();
         };
@@ -2033,18 +2470,18 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 if (navigator.onLine) {
                     banner.classList.remove('show');
                     banner.classList.add('online');
-                    if (offlineText) offlineText.textContent = '✅ Back online!';
+                    if (offlineText) offlineText.textContent = t('status.online');
                     setTimeout(function() {
                         banner.classList.remove('show');
                         setTimeout(function() {
                             banner.classList.remove('online');
-                            if (offlineText) offlineText.textContent = "📡 You're offline. Some features may be limited.";
+                            if (offlineText) offlineText.textContent = t('status.offline');
                         }, 2000);
                     }, 3000);
                 } else {
                     banner.classList.add('show');
                     banner.classList.remove('online');
-                    if (offlineText) offlineText.textContent = "📡 You're offline. Some features may be limited.";
+                    if (offlineText) offlineText.textContent = t('status.offline');
                 }
             }
 
@@ -2055,12 +2492,19 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
 
         // Install Prompt Logic (MongoDB only)
         var deferredPrompt = null;
+        function isStandaloneMode() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+        function isIosDevice() {
+            return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+        }
 
         function showInstallPromptIfNeeded() {
             if (window.appSettings && window.appSettings.installPromptShown) return;
-            if (deferredPrompt) {
-                var prompt = document.getElementById('installPrompt');
-                if (prompt) prompt.classList.add('show');
+            var prompt = document.getElementById('installPrompt');
+            if (!prompt || isStandaloneMode()) return;
+            if (deferredPrompt || isIosDevice()) {
+                prompt.classList.add('show');
             }
         }
 
@@ -2088,17 +2532,22 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             if (prompt) prompt.classList.remove('show');
             deferredPrompt = null;
             saveInstallPromptShown();
-            showToast('App installed successfully! 🎉');
+            showToast(t('toast.appInstalled'));
         });
 
         document.getElementById('installBtn') && document.getElementById('installBtn').addEventListener('click', function() {
             if (!deferredPrompt) {
-                showToast('Installation not available');
+                if (isIosDevice() && !isStandaloneMode()) {
+                    showToast(t('toast.iosInstallGuide'), 5200);
+                    saveInstallPromptShown();
+                    return;
+                }
+                showToast(t('toast.installNotAvailable'));
                 return;
             }
             deferredPrompt.prompt();
             deferredPrompt.userChoice.then(function(choiceResult) {
-                if (choiceResult.outcome === 'accepted') showToast('Installing app...');
+                if (choiceResult.outcome === 'accepted') showToast(t('toast.installingApp'));
                 deferredPrompt = null;
                 var prompt = document.getElementById('installPrompt');
                 if (prompt) prompt.classList.remove('show');
@@ -2118,18 +2567,20 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         var appContent = document.getElementById('appContent');
 
         function startAuthFlow() {
-            initOfflineDetection();
-            setTimeout(function() {
-                if (window.bootstrapAuth) {
-                    window.bootstrapAuth().catch(function(err) {
-                        console.error('🔐 startAuthFlow: bootstrapAuth error:', err);
+            initI18n().finally(function() {
+                initOfflineDetection();
+                setTimeout(function() {
+                    if (window.bootstrapAuth) {
+                        window.bootstrapAuth().catch(function(err) {
+                            console.error('🔐 startAuthFlow: bootstrapAuth error:', err);
+                            window.location.href = '/login';
+                        });
+                    } else {
+                        console.error('🔐 startAuthFlow: bootstrapAuth function not found!');
                         window.location.href = '/login';
-                    });
-                } else {
-                    console.error('🔐 startAuthFlow: bootstrapAuth function not found!');
-                    window.location.href = '/login';
-                }
-            }, 200);
+                    }
+                }, 200);
+            });
         }
 
         if (document.readyState === 'loading') {
@@ -2161,7 +2612,7 @@ if ('serviceWorker' in navigator) {
                 newWorker.addEventListener('statechange', function() {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                         // New service worker available
-                        showToast('New version available! Refresh to update.', 5000);
+                        showToast(t('toast.newVersion'), 5000);
                     }
                 });
             });
@@ -2237,10 +2688,10 @@ function renderWeeklyChart(data) {
         data: {
             labels,
             datasets: [
-                { label: 'Trips', data: tripsData },
-                { label: 'KM', data: kmData },
-                { label: 'Revenue ₹', data: revenueData },
-                { label: 'Profit ₹', data: profitData }
+                { label: t('chart.trips'), data: tripsData },
+                { label: t('dashboard.km'), data: kmData },
+                { label: t('chart.revenue'), data: revenueData },
+                { label: t('chart.profit'), data: profitData }
             ]
         }
     });
@@ -2279,7 +2730,7 @@ function renderProfitChart(data) {
         data: {
             labels,
             datasets: [{
-                label: 'Profit ₹',
+                label: t('chart.profit'),
                 data: values
             }]
         }
@@ -2326,8 +2777,8 @@ function renderDailyChart(data) {
         data: {
             labels,
             datasets: [
-                { label: 'KM', data: kmVals, tension: 0.3 },
-                { label: 'Revenue ₹', data: revVals, tension: 0.3 }
+                { label: t('dashboard.km'), data: kmVals, tension: 0.3 },
+                { label: t('chart.revenue'), data: revVals, tension: 0.3 }
             ]
         }
     });
@@ -2374,12 +2825,12 @@ type: currentChartType,
             labels: labels,
             datasets: [
                 {
-                    label: 'Total KM',
+                    label: t('chart.totalKm'),
                     data: kmValues,
                     tension: 0.3
                 },
                 {
-                    label: 'Revenue ₹',
+                    label: t('chart.revenue'),
                     data: revenueValues,
                     tension: 0.3
                 }
@@ -2401,7 +2852,7 @@ type: currentChartType,
 function toggleChartType() {
 
     if (!window.currentTrips) {
-        showToast("No data for chart ❌");
+        showToast(t('toast.noChartData'));
         return;
     }
 
@@ -2460,22 +2911,22 @@ window.saveSettings = async function() {
         window.appSettings.companyName = String(s.companyName || 'Tripset');
         var rateDisplay = document.getElementById('rateDisplay');
         if (rateDisplay) rateDisplay.value = window.appSettings.rate;
-        showToast("Settings Saved ✅");
+        showToast(t('toast.settingsSaved'));
     } catch (e) {
-        showToast("Failed to save settings ❌");
+        showToast(t('toast.settingsFailed'));
     }
 };
 
 
 window.exportExcel = async function () {
 
-    showToast("Preparing Company Excel... ⏳");
+    showToast(t('toast.preparingExcel'));
 
     const res = await fetch('/api/trips');
     const data = await res.json();
 
     if (!data.length) {
-        showToast("No data found ❌");
+        showToast(t('toast.noData'));
         return;
     }
 
@@ -2500,13 +2951,13 @@ window.exportExcel = async function () {
 
     XLSX.writeFile(wb, "Company_Report.xlsx");
 
-    showToast("Company Excel Downloaded ✅");
+    showToast(t('toast.excelDownloaded'));
 };
 
 // ✅ Download Backup Function
 window.downloadBackup = async function() {
     try {
-        showToast("Preparing backup... ⏳");
+        showToast(t('toast.preparingBackup'));
         
         const res = await fetch('/api/trips');
         if (!res.ok) {
@@ -2516,7 +2967,7 @@ window.downloadBackup = async function() {
         const data = await res.json();
         
         if (!data || data.length === 0) {
-            showToast("No trips to backup ❌");
+            showToast(t('toast.noTripsBackup'));
             return;
         }
 
@@ -2542,10 +2993,10 @@ window.downloadBackup = async function() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast(\`Backup downloaded: \${data.length} trips ✅\`);
+        showToast(t('toast.backupDownloaded', { count: data.length }));
     } catch (err) {
         console.error("Backup error:", err);
-        showToast("Failed to download backup ❌");
+        showToast(t('toast.backupDownloadFailed'));
     }
 };
 
@@ -2558,13 +3009,13 @@ window.handleRestoreBackup = async function(event) {
 
     // Validate file type
     if (!file.name.endsWith('.json') && file.type !== 'application/json') {
-        showToast("Invalid file type. Please select a JSON file ❌");
+        showToast(t('toast.invalidFileType'));
         event.target.value = ''; // Reset input
         return;
     }
 
     try {
-        showToast("Reading backup file... ⏳");
+        showToast(t('toast.readingBackup'));
         
         // Read file as text
         const fileContent = await new Promise((resolve, reject) => {
@@ -2579,7 +3030,7 @@ window.handleRestoreBackup = async function(event) {
         try {
             backupData = JSON.parse(fileContent);
         } catch (parseError) {
-            showToast("Invalid JSON format ❌");
+            showToast(t('toast.invalidJson'));
             event.target.value = '';
             return;
         }
@@ -2593,13 +3044,13 @@ window.handleRestoreBackup = async function(event) {
             // If it's a backup object with trips array
             trips = backupData.trips;
         } else {
-            showToast("Invalid backup format. Expected array of trips ❌");
+            showToast(t('toast.invalidBackupFormat'));
             event.target.value = '';
             return;
         }
 
         if (trips.length === 0) {
-            showToast("Backup file is empty ❌");
+            showToast(t('toast.backupEmpty'));
             event.target.value = '';
             return;
         }
@@ -2617,19 +3068,19 @@ window.handleRestoreBackup = async function(event) {
         });
 
         if (invalidTrips.length > 0) {
-            showToast(\`Invalid trip data: \${invalidTrips[0]} ❌\`);
+            showToast(t('toast.invalidTripData', { detail: invalidTrips[0] }));
             event.target.value = '';
             return;
         }
 
         // Confirm restore
-        const confirmMessage = \`Restore \${trips.length} trips? This will add them to your database.\`;
+        const confirmMessage = t('toast.restoreConfirm', { count: trips.length });
         if (!confirm(confirmMessage)) {
             event.target.value = '';
             return;
         }
 
-        showToast(\`Restoring \${trips.length} trips... ⏳\`);
+        showToast(t('toast.restoringTrips', { count: trips.length }));
 
         // Send to API
         const res = await fetch('/api/trips/bulk', {
@@ -2643,7 +3094,7 @@ window.handleRestoreBackup = async function(event) {
         const result = await res.json();
 
         if (res.ok) {
-            showToast(\`Successfully restored \${result.inserted} trips ✅\`);
+            showToast(t('toast.restoredTrips', { count: result.inserted }));
             // Refresh trips list
             if (window.fetchTrips) {
                 setTimeout(() => {
@@ -2651,9 +3102,9 @@ window.handleRestoreBackup = async function(event) {
                 }, 500);
             }
         } else {
-            showToast(\`Restore failed: \${result.error || 'Unknown error'} ❌\`);
+            showToast(t('toast.restoreFailed', { error: result.error || 'Unknown error' }));
             if (result.inserted > 0) {
-                showToast(\`Note: \${result.inserted} trips were inserted before error.\`);
+                showToast(t('toast.restorePartial', { count: result.inserted }));
             }
         }
 
@@ -2661,7 +3112,7 @@ window.handleRestoreBackup = async function(event) {
         event.target.value = '';
     } catch (err) {
         console.error("Restore error:", err);
-        showToast("Failed to restore backup ❌");
+        showToast(t('toast.restoreFailedGeneric'));
         event.target.value = '';
     }
 };
@@ -2680,7 +3131,7 @@ window.toggleDarkMode = async function() {
         });
         if (window.appSettings) window.appSettings.darkMode = isDark ? 'on' : 'off';
     } catch (e) {}
-    showToast(isDark ? "Dark Mode ON 🌙" : "Light Mode ☀️");
+    showToast(isDark ? t('toast.darkModeOn') : t('toast.lightModeOn'));
 };
 
 /* LOAD SAVED MODE - now handled inside loadSettings */
@@ -2692,19 +3143,19 @@ window.loadDarkMode = function() { /* No-op; loadSettings applies darkMode */ };
 window.openEditModal = function(id) {
     if (!id) {
         console.error("Edit: No ID provided");
-        showToast("Error: No trip ID provided ❌");
+        showToast(t('toast.errorNoTripId'));
         return;
     }
     
     if (!window.currentTrips) {
-        showToast("Trips not loaded yet. Please wait... ❌");
+        showToast(t('toast.tripsNotLoaded'));
         return;
     }
     
     const trip = window.currentTrips.find(t => t._id === id);
     if (!trip) {
         console.error("Edit: Trip not found with ID:", id);
-        showToast("Trip not found ❌");
+        showToast(t('toast.tripNotFound'));
         return;
     }
 
@@ -2776,7 +3227,7 @@ window.updateTrip = async function() {
     });
 
     if (res.ok) {
-        showToast("Trip Updated ✅");
+        showToast(t('toast.tripUpdated'));
         window.closeEditModal();
         fetchTrips();
     }
@@ -2823,17 +3274,17 @@ window.closeEditModal = function() {
                 .forEach(c => c.classList.remove('active'));
             
             // Update nav buttons
-            document.querySelectorAll('.nav-btn')
+            document.querySelectorAll('.nav-btn[data-tab]')
                 .forEach(btn => {
                     btn.classList.remove('nav-btn-active');
                     btn.classList.add('nav-btn-inactive');
                 });
             
-            var activeBtn = document.getElementById('btn-' + id);
-            if (activeBtn) {
-                activeBtn.classList.remove('nav-btn-inactive');
-                activeBtn.classList.add('nav-btn-active');
-            }
+            document.querySelectorAll('.nav-btn[data-tab="' + id + '"]')
+                .forEach(btn => {
+                    btn.classList.remove('nav-btn-inactive');
+                    btn.classList.add('nav-btn-active');
+                });
             
             // Show new tab with fade in
             var newTab = document.getElementById(id);
@@ -2874,17 +3325,17 @@ window.closeEditModal = function() {
 
     document.getElementById(id).classList.add('active');
 
-    document.querySelectorAll('.nav-btn')
+    document.querySelectorAll('.nav-btn[data-tab]')
         .forEach(btn => {
             btn.classList.remove('nav-btn-active');
             btn.classList.add('nav-btn-inactive');
         });
 
-        var activeBtn = document.getElementById('btn-' + id);
-    if (activeBtn) {
-        activeBtn.classList.remove('nav-btn-inactive');
-        activeBtn.classList.add('nav-btn-active');
-        }
+    document.querySelectorAll('.nav-btn[data-tab="' + id + '"]')
+        .forEach(btn => {
+            btn.classList.remove('nav-btn-inactive');
+            btn.classList.add('nav-btn-active');
+        });
     }
 
     if (id === 'entries' || id === 'company-entries' || id === 'dashboard')
@@ -2893,11 +3344,12 @@ window.closeEditModal = function() {
     if (id === 'home')
         window.startTypingEffect();
 
+    if (window.innerWidth < 768) window.toggleMobileNav(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
             window.startTypingEffect = function() {
-                const text = "Welcome Kamlesh Bhai";
+                const text = t('home.welcome');
                 const target = document.getElementById('typing-text');
                 if(!target) return;
                 target.innerHTML = "";
@@ -2911,15 +3363,31 @@ window.closeEditModal = function() {
                 type();
             };
 
-       async function fetchTrips() {
+async function fetchTrips() {
 
     const res = await fetch('/api/trips');
     const data = await res.json();
 
+    const entriesMonth = document.getElementById('entriesMonthFilter')?.value;
     const companyMonth = document.getElementById('monthFilter')?.value;
     const dashMonth = document.getElementById('dashMonthFilter')?.value;
 
     let filtered = data;
+
+    // ✅ ENTRIES PAGE FILTER
+    if (entriesMonth && document.getElementById('entries')?.classList.contains('active')) {
+
+        const [year, month] = entriesMonth.split('-');
+
+        filtered = data.filter(e => {
+            if (!e.date) return false;
+
+            const parts = e.date.split('-'); // dd-mm-yyyy
+            if (parts.length !== 3) return false;
+
+            return parts[1] === month && parts[2] === year;
+        });
+    }
 
     // ✅ COMPANY PAGE FILTER
     if (companyMonth && document.getElementById('company-entries')?.classList.contains('active')) {
@@ -2961,6 +3429,10 @@ window.closeEditModal = function() {
         fetchTrips();
     };
 
+    window.applyEntriesMonthFilter = function() {
+        fetchTrips();
+    };
+
 
 
             window.saveToMongo = async function() {
@@ -2989,7 +3461,7 @@ window.closeEditModal = function() {
                     body: JSON.stringify(payload)
                 });
                 if(res.ok) {
-                    showToast("Data Saved! ✅");
+                    showToast(t('toast.dataSaved'));
                     document.getElementById('tripForm').reset();
                     window.showTab('entries');
                 }
@@ -2998,11 +3470,11 @@ window.closeEditModal = function() {
             window.deleteTrip = async function(id) {
                 if(!id) {
                     console.error("Delete: No ID provided");
-                    showToast("Error: No trip ID provided ❌");
+                    showToast(t('toast.errorNoTripId'));
                     return;
                 }
                 
-                if(!confirm("Are you sure you want to delete this trip?")) return;
+                if(!confirm(t('toast.deleteConfirm'))) return;
                 
                 try {
                     const res = await fetch('/api/trips/' + id, { 
@@ -3010,15 +3482,15 @@ window.closeEditModal = function() {
                     });
                     
                     if(res.ok) {
-                        showToast("Trip deleted successfully ✅");
+                        showToast(t('toast.tripDeleted'));
                 fetchTrips();
                     } else {
                         const error = await res.json();
-                        showToast("Delete failed: " + (error.error || "Unknown error") + " ❌");
+                        showToast(t('toast.deleteFailed', { error: (error.error || 'Unknown error') }));
                     }
                 } catch(err) {
                     console.error("Delete error:", err);
-                    showToast("Error deleting trip ❌");
+                    showToast(t('toast.deleteError'));
                 }
             };
 
@@ -3182,9 +3654,9 @@ function animateValue(id, start, end, duration = 800) {
 (e.pickupTime || '-') + ' - ' + (e.dropTime || '-') + '</td>' +
 
 '<td class="p-4 text-xs font-bold">' +
-'Other:+₹' + (parseFloat(e.other) || 0).toFixed(2) +
-'<br/>CNG:-₹' + (parseFloat(e.cng) || 0).toFixed(2) +
-'<br/>Exp:-₹' + (parseFloat(e.otherExpense) || 0).toFixed(2) +
+t('table.otherPlus') + (parseFloat(e.other) || 0).toFixed(2) +
+'<br/>' + t('table.cngMinus') + (parseFloat(e.cng) || 0).toFixed(2) +
+'<br/>' + t('table.expMinus') + (parseFloat(e.otherExpense) || 0).toFixed(2) +
 '</td>' +
 
 '<td class="p-4 text-right font-black text-slate-900">₹' +
@@ -3193,9 +3665,9 @@ function animateValue(id, start, end, duration = 800) {
 
 '<td class="p-4 text-center no-pdf">' +
 
-'<button data-edit-id="' + (e._id || '') + '" class="text-indigo-500 hover:text-indigo-700 cursor-pointer" title="Edit">🖊</button>' +
+'<button data-edit-id="' + (e._id || '') + '" class="text-indigo-500 hover:text-indigo-700 cursor-pointer" title="' + t('table.editTitle') + '">🖊</button>' +
 
-'<button data-delete-id="' + (e._id || '') + '" class="text-rose-400 hover:text-rose-600 ml-2 cursor-pointer" title="Delete">🗑️</button>' +
+'<button data-delete-id="' + (e._id || '') + '" class="text-rose-400 hover:text-rose-600 ml-2 cursor-pointer" title="' + t('table.deleteTitle') + '">🗑️</button>' +
 
 '</td>' +
 '</tr>';
@@ -3217,12 +3689,12 @@ function animateValue(id, start, end, duration = 800) {
 
         // Footers
         const fHtml = (trips, km, cng, amt) => {
-            const cngText = cng > 0 ? 'CNG:-₹' + cng.toLocaleString('en-IN') : '-';
-            return '<tr><td colspan="2" class="p-4 text-xs">Trips: ' + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">Grand Total</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-xs font-black">' + cngText + '</td><td class="p-4"></td><td class="p-4 text-right text-indigo-300 text-base">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td><td class="no-pdf"></td></tr>';
+            const cngText = cng > 0 ? t('table.cngMinus') + cng.toLocaleString('en-IN') : '-';
+            return '<tr><td colspan="2" class="p-4 text-xs">' + t('table.tripsPrefix') + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">' + t('table.grandTotal') + '</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-xs font-black">' + cngText + '</td><td class="p-4"></td><td class="p-4 text-right text-indigo-300 text-base">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td><td class="no-pdf"></td></tr>';
         };
 
         const cfHtml = (trips, km, amt) => {
-            return '<tr><td colspan="2" class="p-4 text-xs">Trips: ' + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">Grand Total</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-center">-</td><td class="p-4 text-right text-indigo-100 text-lg">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td></tr>';
+            return '<tr><td colspan="2" class="p-4 text-xs">' + t('table.tripsPrefix') + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">' + t('table.grandTotal') + '</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-center">-</td><td class="p-4 text-right text-indigo-100 text-lg">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td></tr>';
         };
 
         lFoot.innerHTML = fHtml(data.length, gKm, gCng, gAmt);
@@ -3254,21 +3726,21 @@ renderWeeklyChart(data);
     }
 
 
-            function showToast(m) {
+            function showToast(m, duration) {
                 const t = document.getElementById('toast');
                 t.innerText = m; t.classList.remove('hidden');
-                setTimeout(() => t.classList.add('hidden'), 3000);
+                setTimeout(() => t.classList.add('hidden'), duration || 3000);
             }
 
             window.downloadPDF = async function(id) {
                 const el = document.getElementById(id);
-                showToast("PDF Generating... ⏳");
+                showToast(t('toast.pdfGenerating'));
                 await html2pdf().set({ 
                     margin: 5, 
                     filename: 'Trip_Report.pdf', 
                     jsPDF: {format: 'a4', orientation: 'portrait'} 
                 }).from(el).save();
-                showToast("Download Complete! 📄");
+                showToast(t('toast.downloadComplete'));
             };
 
             // Invoice Generator (MongoDB only)
@@ -3311,7 +3783,7 @@ renderWeeklyChart(data);
                     var inp = document.getElementById('invoiceMonthModal');
                     var month = inp && inp.value ? inp.value : '';
                     if (!month) {
-                        showToast('Please select invoice month');
+                        showToast(t('toast.selectInvoiceMonth'));
                         return;
                     }
                     window.closeInvoiceModal();
@@ -3326,27 +3798,27 @@ renderWeeklyChart(data);
                             ? String(monthOverride).trim()
                             : ((modalInput && modalInput.value) ? modalInput.value : ((monthInput && monthInput.value) ? monthInput.value : ''));
                         if (!month) {
-                            showToast('Please select invoice month');
+                            showToast(t('toast.selectInvoiceMonth'));
                             return;
                         }
 
-                        showToast('Generating invoice...');
+                        showToast(t('toast.generatingInvoice'));
 
                         const res = await fetch('/api/invoice/' + month, { cache: 'no-store' });
                         if (!res.ok) {
-                            showToast('Failed to generate invoice');
+                            showToast(t('toast.invoiceFailed'));
                             return;
                         }
 
                         const data = await res.json();
-                        const t = data.totals || {};
+                        const totals = data.totals || {};
                         const companyName = data.companyName || 'Tripset';
                         const monthLabel = formatMonthLabel(data.month || month);
                         const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
                         const content = document.getElementById('invoiceContent');
                         if (!content) {
-                            showToast('Invoice template missing');
+                            showToast(t('toast.invoiceTemplateMissing'));
                             return;
                         }
 
@@ -3354,45 +3826,45 @@ renderWeeklyChart(data);
                             + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;">'
                             +   '<div>'
                             +     '<div style="font-size:22px;font-weight:900;color:#0f172a;">' + String(companyName) + '</div>'
-                            +     '<div style="font-size:12px;color:#64748b;margin-top:2px;">Monthly Trip Invoice</div>'
+                            +     '<div style="font-size:12px;color:#64748b;margin-top:2px;">' + t('invoice.monthlyTripInvoice') + '</div>'
                             +   '</div>'
                             +   '<div style="text-align:right;font-size:12px;color:#64748b;">'
-                            +     '<div><span style="font-weight:700;color:#0f172a;">Invoice Month:</span> ' + String(monthLabel) + '</div>'
-                            +     '<div><span style="font-weight:700;color:#0f172a;">Generated:</span> ' + String(generatedOn) + '</div>'
+                            +     '<div><span style="font-weight:700;color:#0f172a;">' + t('invoice.invoiceMonthLabel') + '</span> ' + String(monthLabel) + '</div>'
+                            +     '<div><span style="font-weight:700;color:#0f172a;">' + t('invoice.generatedLabel') + '</span> ' + String(generatedOn) + '</div>'
                             +   '</div>'
                             + '</div>'
                             + '<div style="border-top:1px solid #e2e8f0;margin:12px 0;"></div>'
                             + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12px;margin-bottom:16px;">'
                             +   '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">'
-                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">Trips</div>'
-                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>Total Trips</span><span style="font-weight:800;">' + String(t.totalTrips || 0) + '</span></div>'
-                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>Total KM</span><span style="font-weight:800;">' + String((Number(t.totalKm) || 0).toFixed(2)) + '</span></div>'
+                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">' + t('dashboard.trips') + '</div>'
+                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>' + t('dashboard.totalTrips') + '</span><span style="font-weight:800;">' + String(totals.totalTrips || 0) + '</span></div>'
+                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>' + t('dashboard.totalKm') + '</span><span style="font-weight:800;">' + String((Number(totals.totalKm) || 0).toFixed(2)) + '</span></div>'
                             +   '</div>'
                             +   '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">'
-                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">Totals</div>'
-                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>Entry Total</span><span style="font-weight:900;color:#059669;">' + formatInr(t.entryTotal) + '</span></div>'
-                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>Company Total (KM × rate)</span><span style="font-weight:900;color:#f97316;">' + formatInr(t.companyTotal) + '</span></div>'
+                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">' + t('invoice.totals') + '</div>'
+                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>' + t('dashboard.entryTotal') + '</span><span style="font-weight:900;color:#059669;">' + formatInr(totals.entryTotal) + '</span></div>'
+                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>' + t('company.totalRate') + '</span><span style="font-weight:900;color:#f97316;">' + formatInr(totals.companyTotal) + '</span></div>'
                             +   '</div>'
                             + '</div>'
                             + '<div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-size:12px;">'
-                            +   '<div style="background:#f8fafc;padding:10px 12px;font-weight:900;color:#0f172a;">Expense Breakdown</div>'
+                            +   '<div style="background:#f8fafc;padding:10px 12px;font-weight:900;color:#0f172a;">' + t('invoice.expenseBreakdown') + '</div>'
                             +   '<div style="padding:12px;">'
-                            +     '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>CNG</span><span style="font-weight:800;">' + formatInr(t.totalCng) + '</span></div>'
-                            +     '<div style="display:flex;justify-content:space-between;"><span>Other Expense</span><span style="font-weight:800;">' + formatInr(t.totalOtherExpense) + '</span></div>'
+                            +     '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>CNG</span><span style="font-weight:800;">' + formatInr(totals.totalCng) + '</span></div>'
+                            +     '<div style="display:flex;justify-content:space-between;"><span>' + t('entry.otherExpense') + '</span><span style="font-weight:800;">' + formatInr(totals.totalOtherExpense) + '</span></div>'
                             +   '</div>'
                             + '</div>'
                             + '<div style="margin-top:16px;border:1px solid #bbf7d0;background:#ecfdf5;border-radius:12px;padding:12px;font-size:12px;">'
                             +   '<div style="display:flex;justify-content:space-between;align-items:center;">'
                             +     '<span style="font-weight:900;color:#065f46;">Net Profit</span>'
-                            +     '<span style="font-weight:900;font-size:16px;color:#064e3b;">' + formatInr(t.netProfit) + '</span>'
+                            +     '<span style="font-weight:900;font-size:16px;color:#064e3b;">' + formatInr(totals.netProfit) + '</span>'
                             +   '</div>'
                             + '</div>'
                             + '<div style="margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;color:#64748b;">'
                             +   '<div>'
                             +     '<div style="height:36px;border-bottom:1px solid #cbd5e1;width:180px;"></div>'
-                            +     '<div style="margin-top:6px;">Authorised Signatory</div>'
+                            +     '<div style="margin-top:6px;">' + t('invoice.authorizedSignatory') + '</div>'
                             +   '</div>'
-                            +   '<div style="text-align:right;">Thank you.</div>'
+                            +   '<div style="text-align:right;">' + t('invoice.thankYou') + '</div>'
                             + '</div>';
 
                         content.innerHTML = html;
@@ -3408,10 +3880,10 @@ renderWeeklyChart(data);
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                         }).from(content).save();
 
-                        showToast('Invoice downloaded ✅');
+                        showToast(t('toast.invoiceDownloaded'));
                     } catch (e) {
                         console.error('INVOICE UI ERROR:', e);
-                        showToast('Invoice generation failed');
+                        showToast(t('toast.invoiceGenerationFailed'));
                     }
                 };
             })();

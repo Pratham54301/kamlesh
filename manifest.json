@@ -2,12 +2,15 @@
   "name": "Tripset - Trip Management",
   "short_name": "Tripset",
   "description": "Manage your trips, track expenses, and analyze profits",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait-primary",
   "background_color": "#020617",
   "theme_color": "#F97316",
+  "prefer_related_applications": false,
   "categories": ["business", "productivity", "finance"],
   "icons": [
     {
@@ -23,7 +26,6 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
   "shortcuts": [
     {
       "name": "New Entry",
