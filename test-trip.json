@@ -1,0 +1,14 @@
+{
+  "date": "2026-02-24",
+  "pickupTime": "10:00",
+  "dropTime": "11:00",
+  "tripId": "TEST001",
+  "pickup": "Test Pickup",
+  "drop": "Test Drop",
+  "person": 1,
+  "km": 15,
+  "rate": 21,
+  "other": 0,
+  "cng": 0,
+  "otherExpense": 0
+}
