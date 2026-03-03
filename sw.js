@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tripset-v7';
+const CACHE_NAME = 'tripset-v8';
 const urlsToCache = [
     '/',
     '/icon-192.png',

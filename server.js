@@ -7,10 +7,11 @@
      */
 
     const express = require('express');
-    const session = require('express-session');
-    const connectMongo = require('connect-mongo');
-    const mongoose = require('mongoose');
-    const path = require('path');
+const session = require('express-session');
+const connectMongo = require('connect-mongo');
+const mongoose = require('mongoose');
+const path = require('path');
+const crypto = require('crypto');
 
     const app = express();
     app.use(express.json());
@@ -95,12 +96,90 @@
             companyName: { type: String, default: 'Tripset' },
             rate: { type: Number, default: 21 },
             darkMode: { type: String, default: 'off', enum: ['on', 'off'] },
-            installPromptShown: { type: Boolean, default: false }
+            installPromptShown: { type: Boolean, default: false },
+            invoiceLogoUrl: { type: String, default: '/icon-512.png' },
+            invoiceCustomerName: { type: String, default: 'Walk-in Customer' },
+            invoiceCustomerContact: { type: String, default: '' },
+            invoiceTaxPercent: { type: Number, default: 0 },
+            invoicePaymentStatus: {
+                type: String,
+                default: 'Pending',
+                enum: ['Pending', 'Paid', 'Partially Paid', 'Unpaid']
+            }
         },
         { collection: 'tripset_settings', versionKey: false }
     );
 
-    const AppSettings = mongoose.model('AppSettings', appSettingsSchema);
+const AppSettings = mongoose.model('AppSettings', appSettingsSchema);
+
+const pinStateSchema = new mongoose.Schema(
+    {
+        key: { type: String, unique: true, required: true },
+        pinHash: { type: String, default: '' },
+        updatedAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_pin_state', versionKey: false }
+);
+
+const PinState = mongoose.model('PinState', pinStateSchema);
+const DEFAULT_PIN = '6287';
+
+function normalizePin(pin) {
+    const raw = String(pin == null ? '' : pin).trim();
+    let out = '';
+    for (const ch of raw) {
+        const cp = ch.codePointAt(0);
+        if (cp >= 48 && cp <= 57) { out += ch; continue; } // 0-9
+        if (cp >= 0x0660 && cp <= 0x0669) { out += String(cp - 0x0660); continue; } // Arabic-Indic
+        if (cp >= 0x06F0 && cp <= 0x06F9) { out += String(cp - 0x06F0); continue; } // Extended Arabic-Indic
+        if (cp >= 0x0966 && cp <= 0x096F) { out += String(cp - 0x0966); continue; } // Devanagari
+        if (cp >= 0x09E6 && cp <= 0x09EF) { out += String(cp - 0x09E6); continue; } // Bengali
+        if (cp >= 0x0AE6 && cp <= 0x0AEF) { out += String(cp - 0x0AE6); continue; } // Gujarati
+        if (cp >= 0xFF10 && cp <= 0xFF19) { out += String(cp - 0xFF10); continue; } // Full-width
+    }
+    return out;
+}
+
+function isValidPin(pin) {
+    return /^\d{4}$/.test(normalizePin(pin));
+}
+
+function isSha256Hash(v) {
+    return /^[a-f0-9]{64}$/i.test(String(v || '').trim());
+}
+
+function hashPin(pin) {
+    return crypto.createHash('sha256').update(normalizePin(pin)).digest('hex');
+}
+
+async function getPinDoc() {
+    let doc = await PinState.findOne({ key: 'singleton' });
+    if (!doc) {
+        doc = await PinState.create({
+            key: 'singleton',
+            pinHash: hashPin(DEFAULT_PIN),
+            updatedAt: new Date()
+        });
+        return doc;
+    }
+    const current = String(doc.pinHash || '').trim();
+    if (!current) {
+        doc.pinHash = hashPin(DEFAULT_PIN);
+        doc.updatedAt = new Date();
+        await doc.save();
+    } else if (isValidPin(current)) {
+        // Legacy migration: plain 4-digit pin stored directly.
+        doc.pinHash = hashPin(current);
+        doc.updatedAt = new Date();
+        await doc.save();
+    } else if (!isSha256Hash(current)) {
+        // Unknown legacy format: reset safely to default.
+        doc.pinHash = hashPin(DEFAULT_PIN);
+        doc.updatedAt = new Date();
+        await doc.save();
+    }
+    return doc;
+}
 
     async function getSettings() {
         let doc = await AppSettings.findOne({ key: 'singleton' }).lean();
@@ -110,7 +189,12 @@
                 companyName: 'Tripset',
                 rate: 21,
                 darkMode: 'off',
-                installPromptShown: false
+                installPromptShown: false,
+                invoiceLogoUrl: '/icon-512.png',
+                invoiceCustomerName: 'Walk-in Customer',
+                invoiceCustomerContact: '',
+                invoiceTaxPercent: 0,
+                invoicePaymentStatus: 'Pending'
             });
             doc = doc.toObject ? doc.toObject() : doc;
         }
@@ -118,7 +202,12 @@
             companyName: (doc && doc.companyName) ? doc.companyName : 'Tripset',
             rate: (doc && doc.rate != null) ? Number(doc.rate) : 21,
             darkMode: (doc && doc.darkMode) ? doc.darkMode : 'off',
-            installPromptShown: !!(doc && doc.installPromptShown)
+            installPromptShown: !!(doc && doc.installPromptShown),
+            invoiceLogoUrl: (doc && doc.invoiceLogoUrl) ? String(doc.invoiceLogoUrl) : '/icon-512.png',
+            invoiceCustomerName: (doc && doc.invoiceCustomerName) ? String(doc.invoiceCustomerName) : 'Walk-in Customer',
+            invoiceCustomerContact: (doc && doc.invoiceCustomerContact) ? String(doc.invoiceCustomerContact) : '',
+            invoiceTaxPercent: (doc && doc.invoiceTaxPercent != null) ? Number(doc.invoiceTaxPercent) : 0,
+            invoicePaymentStatus: (doc && doc.invoicePaymentStatus) ? String(doc.invoicePaymentStatus) : 'Pending'
         };
     }
 
@@ -139,7 +228,17 @@
 
     app.put('/api/settings', requireApiAuth, async (req, res) => {
         try {
-            const { companyName, rate, darkMode, installPromptShown } = req.body;
+            const {
+                companyName,
+                rate,
+                darkMode,
+                installPromptShown,
+                invoiceLogoUrl,
+                invoiceCustomerName,
+                invoiceCustomerContact,
+                invoiceTaxPercent,
+                invoicePaymentStatus
+            } = req.body;
             let doc = await AppSettings.findOne({ key: 'singleton' });
             if (!doc) {
                 doc = await AppSettings.create({ key: 'singleton' });
@@ -148,12 +247,29 @@
             if (rate != null) doc.rate = Number(rate);
             if (darkMode != null && ['on', 'off'].includes(darkMode)) doc.darkMode = darkMode;
             if (installPromptShown != null) doc.installPromptShown = Boolean(installPromptShown);
+            if (invoiceLogoUrl != null) doc.invoiceLogoUrl = String(invoiceLogoUrl || '').trim() || '/icon-512.png';
+            if (invoiceCustomerName != null) doc.invoiceCustomerName = String(invoiceCustomerName || '').trim() || 'Walk-in Customer';
+            if (invoiceCustomerContact != null) doc.invoiceCustomerContact = String(invoiceCustomerContact || '').trim();
+            if (invoiceTaxPercent != null) {
+                const tax = Number(invoiceTaxPercent);
+                doc.invoiceTaxPercent = Number.isFinite(tax) ? Math.max(0, tax) : 0;
+            }
+            if (invoicePaymentStatus != null) {
+                const allowed = ['Pending', 'Paid', 'Partially Paid', 'Unpaid'];
+                const nextStatus = String(invoicePaymentStatus || '').trim();
+                doc.invoicePaymentStatus = allowed.includes(nextStatus) ? nextStatus : 'Pending';
+            }
             await doc.save();
             res.json({
                 companyName: doc.companyName,
                 rate: Number(doc.rate),
                 darkMode: doc.darkMode,
-                installPromptShown: !!doc.installPromptShown
+                installPromptShown: !!doc.installPromptShown,
+                invoiceLogoUrl: String(doc.invoiceLogoUrl || '/icon-512.png'),
+                invoiceCustomerName: String(doc.invoiceCustomerName || 'Walk-in Customer'),
+                invoiceCustomerContact: String(doc.invoiceCustomerContact || ''),
+                invoiceTaxPercent: Number(doc.invoiceTaxPercent || 0),
+                invoicePaymentStatus: String(doc.invoicePaymentStatus || 'Pending')
             });
         } catch (err) {
             res.status(500).json({ error: err.message });
@@ -197,12 +313,95 @@
         res.json({ success: true });
     });
 
-    app.get('/api/auth/status', (req, res) => {
-        res.json({ isAuthenticated: !!(req.session && req.session.isAuthenticated) });
-    });
+app.get('/api/auth/status', (req, res) => {
+    res.json({ isAuthenticated: !!(req.session && req.session.isAuthenticated) });
+});
 
-    // API Routes - OLD ENTRIES FIRST (Sort 1) - protected
-    app.get('/api/trips', requireApiAuth, async (req, res) => {
+app.get('/api/pin/status', requireApiAuth, async (req, res) => {
+    try {
+        const doc = await getPinDoc();
+        res.json({ isSet: !!String(doc.pinHash || '').trim() });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to get PIN status' });
+    }
+});
+
+app.post('/api/pin/set', requireApiAuth, async (req, res) => {
+    try {
+        const pin = normalizePin(req.body.pin || '');
+        if (!isValidPin(pin)) {
+            return res.status(400).json({ error: 'PIN must be 4 digits' });
+        }
+
+        const doc = await getPinDoc();
+        if (String(doc.pinHash || '').trim()) {
+            return res.status(409).json({ error: 'PIN already set. Use change PIN.' });
+        }
+        doc.pinHash = hashPin(pin);
+        doc.updatedAt = new Date();
+        await doc.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to set PIN' });
+    }
+});
+
+app.post('/api/pin/verify', requireApiAuth, async (req, res) => {
+    try {
+        const pin = normalizePin(req.body.pin || '');
+        if (!isValidPin(pin)) {
+            return res.status(400).json({ error: 'PIN must be 4 digits' });
+        }
+
+        const doc = await getPinDoc();
+        const savedHash = String(doc.pinHash || '').trim();
+        if (!savedHash) {
+            return res.status(400).json({ error: 'PIN not set' });
+        }
+        let verified = hashPin(pin) === savedHash;
+        if (!verified && isValidPin(savedHash) && normalizePin(pin) === normalizePin(savedHash)) {
+            // One-time migration fallback for plain PIN in DB.
+            doc.pinHash = hashPin(pin);
+            doc.updatedAt = new Date();
+            await doc.save();
+            verified = true;
+        }
+
+        if (!verified) {
+            return res.status(401).json({ error: 'Invalid PIN' });
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to verify PIN' });
+    }
+});
+
+app.post('/api/pin/change', requireApiAuth, async (req, res) => {
+    try {
+        const currentPin = normalizePin(req.body.currentPin || '');
+        const newPin = normalizePin(req.body.newPin || '');
+        if (!isValidPin(currentPin) || !isValidPin(newPin)) {
+            return res.status(400).json({ error: 'PIN must be 4 digits' });
+        }
+
+        const doc = await getPinDoc();
+        const savedHash = String(doc.pinHash || '').trim();
+        if (!savedHash || hashPin(currentPin) !== savedHash) {
+            return res.status(401).json({ error: 'Current PIN is wrong' });
+        }
+
+        doc.pinHash = hashPin(newPin);
+        doc.updatedAt = new Date();
+        await doc.save();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to change PIN' });
+    }
+});
+
+// API Routes - OLD ENTRIES FIRST (Sort 1) - protected
+app.get('/api/trips', requireApiAuth, async (req, res) => {
         try {
             const trips = await Trip.find().sort({ createdAt: 1 });
             res.json(trips);
@@ -316,44 +515,55 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
             const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
             const end = new Date(year, month, 1, 0, 0, 0, 0); // exclusive
 
-            const trips = await Trip.find({ createdAt: { $gte: start, $lt: end } }).lean();
+            const trips = await Trip.find({ createdAt: { $gte: start, $lt: end } })
+                .sort({ createdAt: 1 })
+                .lean();
             const settings = await getSettings();
 
-            const totals = trips.reduce(
-                (acc, t) => {
-                    const km = Number(t.km) || 0;
-                    const rate = Number(t.rate) || settings.rate;
-                    const other = Number(t.other) || 0;
-                    const cng = Number(t.cng) || 0;
-                    const otherExpense = Number(t.otherExpense) || 0;
-                    const entryTotal = Number(t.total) || 0;
+            const companyName = String(settings.companyName || 'Tripset');
+            const safeTaxPercent = Math.max(0, Number(settings.invoiceTaxPercent) || 0);
+            const items = trips.map((t) => {
+                const km = Number(t.km) || 0;
+                const rate = Number(t.rate) || settings.rate;
+                const lineTotal = km * rate;
+                const tripId = String(t.tripId || '').trim();
+                const from = String(t.pickup || '').trim();
+                const to = String(t.drop || '').trim();
+                const route = [from, to].filter(Boolean).join(' -> ') || 'Trip Service';
+                const displayDate = String(t.date || '').trim() || new Date(t.createdAt || Date.now()).toLocaleDateString('en-IN');
 
-                    acc.totalTrips += 1;
-                    acc.totalKm += km;
-                    acc.entryTotal += entryTotal;
-                    acc.companyTotal += km * rate;
-                    acc.totalCng += cng;
-                    acc.totalOtherExpense += otherExpense;
-                    acc.netProfit += (km * rate + other) - (cng + otherExpense);
-                    return acc;
-                },
-                {
-                    totalTrips: 0,
-                    totalKm: 0,
-                    entryTotal: 0,
-                    companyTotal: 0,
-                    totalCng: 0,
-                    totalOtherExpense: 0,
-                    netProfit: 0
-                }
-            );
+                return {
+                    tripId,
+                    itemName: tripId ? (tripId + ' - ' + route) : route,
+                    date: displayDate,
+                    quantity: km,
+                    price: rate,
+                    total: lineTotal
+                };
+            });
 
-            const companyName = await getCompanyName();
+            const subtotal = items.reduce((acc, it) => acc + (Number(it.total) || 0), 0);
+            const taxAmount = (subtotal * safeTaxPercent) / 100;
+            const grandTotal = subtotal + taxAmount;
+            const monthToken = monthStr.replace('-', '');
+            const invoiceNumber = 'INV-' + monthToken + '-' + String(items.length || 0).padStart(3, '0');
 
             return res.json({
                 companyName,
+                companyLogoUrl: String(settings.invoiceLogoUrl || '/icon-512.png'),
                 month: monthStr,
-                totals
+                invoiceNumber,
+                invoiceDate: new Date().toISOString(),
+                customer: {
+                    name: String(settings.invoiceCustomerName || 'Walk-in Customer'),
+                    contact: String(settings.invoiceCustomerContact || '')
+                },
+                items,
+                subtotal,
+                taxPercent: safeTaxPercent,
+                taxAmount,
+                grandTotal,
+                paymentStatus: String(settings.invoicePaymentStatus || 'Pending')
             });
         } catch (err) {
             console.error('INVOICE ERROR:', err);
@@ -552,9 +762,9 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         
             @import url('https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@300;400;500;600;700&family=Inter:wght@400;600;800&display=swap');
             body { font-family: 'Hind Vadodara', 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+            *, *::before, *::after { animation: none !important; transition: none !important; }
             .tab-content { display: none; }
-            .tab-content.active { display: block; animation: fadeIn 0.4s ease-out; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+            .tab-content.active { display: block; }
             .welcome-gradient { background: linear-gradient(135deg, #F97316, #EA580C); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
             .input-field { width: 100%; padding: 0.75rem; border: 1px solid #e2e8f0; border-radius: 0.5rem; outline: none; transition: all 0.2s; background-color: white; }
             .input-field:focus { box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2); border-color: #6366f1; }
@@ -632,8 +842,8 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         box-shadow: 0 10px 25px rgba(0,0,0,0.04);
         transform: translateY(20px);
         opacity: 0;
-        animation: dashIn 0.6s ease forwards;
-        transition: all 0.25s ease;
+        animation: dashIn 0.6s ease forwards !important;
+        transition: all 0.25s ease !important;
     }
 
     .dash-card:hover {
@@ -654,7 +864,7 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         font-weight: 900;
         margin-top: 0.4rem;
         color: #0f172a;
-        animation: numberPop 0.35s ease;
+        animation: numberPop 0.35s ease !important;
     }
 
     @keyframes dashIn {
@@ -750,7 +960,6 @@ body.dark .dash-card {
     background-color: #121b30;
     border-color: #1e293b;
 }
-
 body.dark .input-field {
     background-color: #101424;
     border-color: #1e293b;
@@ -1093,6 +1302,7 @@ body.dark .input-field::placeholder {
                 if (login) {
                     login.style.setProperty('display', 'none', 'important');
                     login.style.setProperty('visibility', 'hidden', 'important');
+                    login.style.setProperty('pointer-events', 'none', 'important');
                     console.log('✅ Login screen hidden (will show if not auth)');
                 }
                 
@@ -1101,6 +1311,7 @@ body.dark .input-field::placeholder {
                 if (pin) {
                     pin.style.setProperty('display', 'none', 'important');
                     pin.style.setProperty('visibility', 'hidden', 'important');
+                    pin.style.setProperty('pointer-events', 'none', 'important');
                 }
                 
                 // Keep app content hidden - bootstrapAuth will show it after auth check
@@ -1203,6 +1414,39 @@ body.dark .input-field::placeholder {
                 <input type="number" id="rateSetting" class="input-field">
             </div>
 
+            <div class="border-t border-slate-200 pt-5">
+                <h3 class="text-sm font-black uppercase text-slate-700 mb-3">Invoice Defaults</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold uppercase text-slate-500">Company Logo URL</label>
+                        <input type="text" id="invoiceLogoUrl" class="input-field" placeholder="/icon-512.png">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold uppercase text-slate-500">Customer Name</label>
+                        <input type="text" id="invoiceCustomerName" class="input-field" placeholder="Customer / Company Name">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold uppercase text-slate-500">Customer Contact</label>
+                        <input type="text" id="invoiceCustomerContact" class="input-field" placeholder="Phone / Email / Address">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold uppercase text-slate-500">Tax (%)</label>
+                            <input type="number" id="invoiceTaxPercent" min="0" step="0.01" class="input-field" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold uppercase text-slate-500">Payment Status</label>
+                            <select id="invoicePaymentStatus" class="input-field font-bold">
+                                <option value="Pending">Pending</option>
+                                <option value="Paid">Paid</option>
+                                <option value="Partially Paid">Partially Paid</option>
+                                <option value="Unpaid">Unpaid</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div>
                 <label class="text-xs font-bold uppercase text-slate-500" data-i18n="settings.language">Language</label>
                 <select id="languageSelect" class="input-field font-bold">
@@ -1276,7 +1520,7 @@ body.dark .input-field::placeholder {
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <h2 class="text-xl font-black text-slate-800 uppercase" data-i18n="invoice.modalTitle">🧾 Invoice Generator</h2>
-                        <p class="text-sm text-slate-500 mt-1" data-i18n="invoice.modalHelp">Select month and press Enter to download.</p>
+                        <p class="text-sm text-slate-500 mt-1" data-i18n="invoice.modalHelp">Select month and generate invoice PDF.</p>
                     </div>
                     <button onclick="window.closeInvoiceModal()" class="text-slate-400 hover:text-slate-600 text-xl font-black">✖</button>
                 </div>
@@ -1286,16 +1530,12 @@ body.dark .input-field::placeholder {
                     <input type="month" id="invoiceMonthModal" class="input-field font-bold">
                 </div>
 
-                <div class="flex gap-3 mt-6">
-                    <button onclick="window.closeInvoiceModal()"
-                        class="flex-1 py-2.5 rounded-lg font-bold border border-slate-300 text-slate-700">
-                        <span data-i18n="common.cancel">Cancel</span>
-                    </button>
+                <div class="mt-6">
                     <button onclick="window.generateInvoiceFromModal()"
-                        class="flex-1 py-2.5 rounded-lg font-bold bg-orange-500 hover:bg-orange-600 text-white">
-                        <span data-i18n="common.downloadPdf">Download PDF</span>
-            </button>
-        </div>
+                        class="w-full py-2.5 rounded-lg font-bold bg-orange-500 hover:bg-orange-600 text-white">
+                        <span data-i18n="dashboard.generateInvoicePdf">Generate Invoice PDF</span>
+                    </button>
+                </div>
     </div>
 </div>
 
@@ -1334,8 +1574,8 @@ body.dark .input-field::placeholder {
 </div>
 
 <!-- Hidden container used for PDF rendering -->
-<div id="invoiceContainer" class="hidden">
-  <div id="invoiceContent" class="max-w-3xl mx-auto bg-white text-slate-800 p-8 text-sm leading-relaxed"></div>
+<div id="invoiceContainer" class="hidden" style="position:fixed;left:-200vw;top:0;pointer-events:none;">
+  <div id="invoiceContent" style="width:190mm;min-height:277mm;margin:0 auto;background:#fff;color:#111;padding:0;box-sizing:border-box;font:12px/1.45 'Segoe UI',Arial,sans-serif;"></div>
 </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1693,7 +1933,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
 
         </div><!-- end appContent -->
 
-        <div id="toast" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-xl shadow-2xl z-[100] font-bold"></div>
+        <div id="toast" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-xl shadow-2xl font-bold" style="z-index:2147483647 !important;"></div>
 
          <!-- EDIT MODAL -->
 <div id="editModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
@@ -1783,11 +2023,21 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         function setDisplayImportant(el, value) {
             if (!el) return;
             el.style.setProperty('display', value, 'important');
+            if (String(value).toLowerCase() === 'none') {
+                el.style.setProperty('pointer-events', 'none', 'important');
+            } else {
+                el.style.setProperty('pointer-events', 'auto', 'important');
+            }
         }
 
         function setVisibilityImportant(el, value) {
             if (!el) return;
             el.style.setProperty('visibility', value, 'important');
+            if (String(value).toLowerCase() === 'hidden') {
+                el.style.setProperty('pointer-events', 'none', 'important');
+            } else {
+                el.style.setProperty('pointer-events', 'auto', 'important');
+            }
         }
 
         function setBodyScrollLocked(locked) {
@@ -1801,6 +2051,22 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 document.body.style.setProperty('overflow-y', 'auto', 'important');
                 document.body.style.removeProperty('height');
             }
+        }
+
+        function normalizePinInput(pin) {
+            var raw = String(pin == null ? '' : pin).trim();
+            var out = '';
+            for (const ch of raw) {
+                var cp = ch.codePointAt(0);
+                if (cp >= 48 && cp <= 57) { out += ch; continue; } // 0-9
+                if (cp >= 0x0660 && cp <= 0x0669) { out += String(cp - 0x0660); continue; } // Arabic-Indic
+                if (cp >= 0x06F0 && cp <= 0x06F9) { out += String(cp - 0x06F0); continue; } // Extended Arabic-Indic
+                if (cp >= 0x0966 && cp <= 0x096F) { out += String(cp - 0x0966); continue; } // Devanagari
+                if (cp >= 0x09E6 && cp <= 0x09EF) { out += String(cp - 0x09E6); continue; } // Bengali
+                if (cp >= 0x0AE6 && cp <= 0x0AEF) { out += String(cp - 0x0AE6); continue; } // Gujarati
+                if (cp >= 0xFF10 && cp <= 0xFF19) { out += String(cp - 0xFF10); continue; } // Full-width
+            }
+            return out;
         }
 
         window.toggleMobileNav = function(forceOpen) {
@@ -1867,7 +2133,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         dailyTrend: "📅 Daily Trend", profitAnalysis: "💸 Profit Analysis", weeklyReport: "📆 Weekly Report",
                         monthlySummary: "Monthly Summary", month: "Month", trips: "Trips", km: "KM"
                     },
-                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlesh Bhai" },
+                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlashbhai" },
                     entry: {
                         title: "Trip Details Form", date: "Date", pickupTime: "Pickup Time", dropTime: "Drop Time",
                         tripId: "Trip ID", tripIdPlaceholder: "Manual ID", pickup: "Pickup", pickupPlaceholder: "Pickup point",
@@ -1878,7 +2144,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     entries: { title: "Entries List (Old to New)", route: "Route", time: "Time", otherDetails: "Other Details", total: "Total", action: "Action" },
                     company: { title: "Company Entry Report", totalRate: "Total (KM × Rate)" },
                     invoice: {
-                        modalTitle: "🧾 Invoice Generator", modalHelp: "Select month and press Enter to download.", selectMonth: "Select Month",
+                        modalTitle: "🧾 Invoice Generator", modalHelp: "Select month and generate invoice PDF.", selectMonth: "Select Month",
                         monthlyTripInvoice: "Monthly Trip Invoice", invoiceMonthLabel: "Invoice Month:", generatedLabel: "Generated:",
                         totals: "Totals", expenseBreakdown: "Expense Breakdown", authorizedSignatory: "Authorised Signatory", thankYou: "Thank you."
                     },
@@ -1953,7 +2219,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     entries: { title: "એન્ટ્રી લિસ્ટ (જૂની થી નવી)", route: "રૂટ", time: "સમય", otherDetails: "અન્ય વિગતો", total: "ટોટલ", action: "ક્રિયા" },
                     company: { title: "કંપની એન્ટ્રી રિપોર્ટ", totalRate: "ટોટલ (KM × Rate)" },
                     invoice: {
-                        modalTitle: "🧾 ઇન્વૉઇસ જનરેટર", modalHelp: "મહિનો પસંદ કરો અને Enter દબાવો.", selectMonth: "મહિનો પસંદ કરો",
+                        modalTitle: "🧾 ઇન્વૉઇસ જનરેટર", modalHelp: "મહિનો પસંદ કરો અને ઇન્વૉઇસ PDF બનાવો.", selectMonth: "મહિનો પસંદ કરો",
                         monthlyTripInvoice: "માસિક ટ્રિપ ઇન્વૉઇસ", invoiceMonthLabel: "ઇન્વૉઇસ મહિનો:", generatedLabel: "બનાવેલ:",
                         totals: "કુલ", expenseBreakdown: "ખર્ચ વિગત", authorizedSignatory: "અધિકૃત સહી", thankYou: "આભાર."
                     },
@@ -2028,7 +2294,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     entries: { title: "एंट्री सूची (पुरानी से नई)", route: "रूट", time: "समय", otherDetails: "अन्य विवरण", total: "कुल", action: "एक्शन" },
                     company: { title: "कंपनी एंट्री रिपोर्ट", totalRate: "कुल (KM × Rate)" },
                     invoice: {
-                        modalTitle: "🧾 इनवॉइस जनरेटर", modalHelp: "महीना चुनें और Enter दबाएं।", selectMonth: "महीना चुनें",
+                        modalTitle: "🧾 इनवॉइस जनरेटर", modalHelp: "महीना चुनें और इनवॉइस PDF बनाएं।", selectMonth: "महीना चुनें",
                         monthlyTripInvoice: "मासिक ट्रिप इनवॉइस", invoiceMonthLabel: "इनवॉइस महीना:", generatedLabel: "जनरेटेड:",
                         totals: "कुल", expenseBreakdown: "खर्च विवरण", authorizedSignatory: "अधिकृत हस्ताक्षर", thankYou: "धन्यवाद।"
                     },
@@ -2184,7 +2450,11 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var enterMode = document.getElementById('pinEnterMode');
             var setMode = document.getElementById('pinSetMode');
 
-            if (login) login.classList.remove('show');
+            if (login) {
+                login.classList.remove('show');
+                setDisplayImportant(login, 'none');
+                setVisibilityImportant(login, 'hidden');
+            }
             if (appContent) {
                 setDisplayImportant(appContent, 'none');
                 setVisibilityImportant(appContent, 'hidden');
@@ -2214,7 +2484,17 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         function initApp() {
             if (appInitialized) return;
             appInitialized = true;
-            window.appSettings = { rate: 21, companyName: 'Tripset', darkMode: 'off', installPromptShown: false };
+            window.appSettings = {
+                rate: 21,
+                companyName: 'Tripset',
+                darkMode: 'off',
+                installPromptShown: false,
+                invoiceLogoUrl: '/icon-512.png',
+                invoiceCustomerName: 'Walk-in Customer',
+                invoiceCustomerContact: '',
+                invoiceTaxPercent: 0,
+                invoicePaymentStatus: 'Pending'
+            };
             window.loadSettings().then(function() {
                 var today = new Date();
                 var currentMonth = today.toISOString().slice(0, 7);
@@ -2262,8 +2542,38 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         };
 
         window.doLogin = async function() {
-            // Auth removed - no-op function to prevent errors if login button is somehow clicked
-            console.log('Login attempted but auth is disabled');
+            var uEl = document.getElementById('loginUsername');
+            var pEl = document.getElementById('loginPassword');
+            var username = String((uEl && uEl.value) || '').trim();
+            var password = String((pEl && pEl.value) || '').trim();
+            if (!username || !password) return;
+
+            try {
+                var res = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                if (!res.ok) {
+                    var errText = 'Invalid credentials';
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) errText = String(errData.error);
+                    } catch (e) {}
+                    if (pEl) pEl.value = '';
+                    if (uEl) uEl.focus();
+                    alert(errText);
+                    return;
+                }
+                if (window.bootstrapAuth) {
+                    await window.bootstrapAuth();
+                } else {
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('Login failed');
+            }
         };
 
         window.doLogout = async function() {
@@ -2281,7 +2591,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     credentials: 'include' // Include cookies for session
                 });
                 if (!res.ok) {
-                    console.log('🔐 bootstrapAuth: Status check failed (HTTP ' + res.status + '), redirecting to login');
+                    console.warn('🔐 bootstrapAuth: Status check failed (HTTP ' + res.status + ').');
                     window.location.href = '/login';
                     return;
                 }
@@ -2292,8 +2602,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     window.location.href = '/login';
                     return;
                 }
-                // User is authenticated - show app
-                console.log('🔐 bootstrapAuth: Authenticated, showing app');
+                console.log('🔐 bootstrapAuth: Authenticated, unlocking app');
                 window.unlockScreen();
             } catch (e) {
                 console.error('🔐 bootstrapAuth: Error:', e);
@@ -2304,7 +2613,8 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         window.submitPin = async function() {
             var input = document.getElementById('pinInput');
             if (!input) return;
-            var val = (input.value || '').trim();
+            var val = normalizePinInput(input.value || '');
+            input.value = val;
             if (val.length !== 4 || !/^\d{4}$/.test(val)) {
                 showToast(t('toast.enter4Digits'));
                 return;
@@ -2313,13 +2623,19 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 var res = await fetch('/api/pin/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ pin: val })
                 });
                 if (!res.ok) {
+                    var msg = t('toast.wrongPin');
+                    try {
+                        var err = await res.json();
+                        if (err && err.error) msg = String(err.error);
+                    } catch (e) {}
                     input.classList.add('error', 'pin-shake');
                     input.value = '';
                     input.focus();
-                    showToast(t('toast.wrongPin'));
+                    showToast(msg);
                     setTimeout(function() {
                         input.classList.remove('pin-shake');
                         setTimeout(function() { input.classList.remove('error'); }, 400);
@@ -2337,8 +2653,10 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var inp = document.getElementById('pinSetInput');
             var conf = document.getElementById('pinSetConfirm');
             if (!inp || !conf) return;
-            var a = (inp.value || '').trim();
-            var b = (conf.value || '').trim();
+            var a = normalizePinInput(inp.value || '');
+            var b = normalizePinInput(conf.value || '');
+            inp.value = a;
+            conf.value = b;
             if (a.length !== 4 || !/^\d{4}$/.test(a)) {
                 showToast(t('toast.enter4DigitsPin'));
                 return;
@@ -2356,6 +2674,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 var res = await fetch('/api/pin/set', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ pin: a })
                 });
                 if (!res.ok) {
@@ -2388,9 +2707,12 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var newPin = document.getElementById('changePinNew');
             var conf = document.getElementById('changePinConfirm');
             if (!cur || !newPin || !conf) return;
-            var c = (cur.value || '').trim();
-            var n = (newPin.value || '').trim();
-            var co = (conf.value || '').trim();
+            var c = normalizePinInput(cur.value || '');
+            var n = normalizePinInput(newPin.value || '');
+            var co = normalizePinInput(conf.value || '');
+            cur.value = c;
+            newPin.value = n;
+            conf.value = co;
             if (n.length !== 4 || !/^\d{4}$/.test(n)) {
                 showToast(t('toast.newPin4Digits'));
                 return;
@@ -2404,6 +2726,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     var res = await fetch('/api/pin/change', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ currentPin: c, newPin: n })
                     });
                     if (!res.ok) {
@@ -2565,7 +2888,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             saveInstallPromptShown();
         };
 
-        // Auth removed: load app directly so clicks work
+        // Auth + PIN bootstrap flow
         var loginScreen = document.getElementById('loginScreen');
         var pinLockScreen = document.getElementById('pinLockScreen');
         var appContent = document.getElementById('appContent');
@@ -2580,10 +2903,24 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                             window.location.href = '/login';
                         });
                     } else {
-                        console.error('🔐 startAuthFlow: bootstrapAuth function not found!');
+                        console.error('🔐 startAuthFlow: bootstrapAuth function not found! Showing login screen.');
                         window.location.href = '/login';
                     }
                 }, 200);
+
+                // Hard fallback: if all screens are hidden, show login screen.
+                setTimeout(function() {
+                    var login = document.getElementById('loginScreen');
+                    var pin = document.getElementById('pinLockScreen');
+                    var app = document.getElementById('appContent');
+                    var loginHidden = !login || window.getComputedStyle(login).display === 'none';
+                    var pinHidden = !pin || window.getComputedStyle(pin).display === 'none';
+                    var appHidden = !app || window.getComputedStyle(app).display === 'none';
+                    if (loginHidden && pinHidden && appHidden) {
+                        console.warn('🔐 startAuthFlow: All screens hidden. Forcing login fallback.');
+                        window.location.href = '/login';
+                    }
+                }, 1800);
             });
         }
 
@@ -2880,20 +3217,45 @@ window.loadSettings = async function() {
             rate: Number(s.rate) || 21,
             companyName: String(s.companyName || 'Tripset'),
             darkMode: String(s.darkMode || 'off'),
-            installPromptShown: !!s.installPromptShown
+            installPromptShown: !!s.installPromptShown,
+            invoiceLogoUrl: String(s.invoiceLogoUrl || '/icon-512.png'),
+            invoiceCustomerName: String(s.invoiceCustomerName || 'Walk-in Customer'),
+            invoiceCustomerContact: String(s.invoiceCustomerContact || ''),
+            invoiceTaxPercent: Number(s.invoiceTaxPercent || 0),
+            invoicePaymentStatus: String(s.invoicePaymentStatus || 'Pending')
         };
         var rateEl = document.getElementById('rateSetting');
         var companyEl = document.getElementById('companyName');
         var rateDisplay = document.getElementById('rateDisplay');
+        var logoEl = document.getElementById('invoiceLogoUrl');
+        var customerEl = document.getElementById('invoiceCustomerName');
+        var contactEl = document.getElementById('invoiceCustomerContact');
+        var taxEl = document.getElementById('invoiceTaxPercent');
+        var statusEl = document.getElementById('invoicePaymentStatus');
         if (rateEl) rateEl.value = window.appSettings.rate;
         if (companyEl) companyEl.value = window.appSettings.companyName;
         if (rateDisplay) rateDisplay.value = window.appSettings.rate;
+        if (logoEl) logoEl.value = window.appSettings.invoiceLogoUrl;
+        if (customerEl) customerEl.value = window.appSettings.invoiceCustomerName;
+        if (contactEl) contactEl.value = window.appSettings.invoiceCustomerContact;
+        if (taxEl) taxEl.value = window.appSettings.invoiceTaxPercent;
+        if (statusEl) statusEl.value = window.appSettings.invoicePaymentStatus;
         if (window.appSettings.darkMode === 'on') document.body.classList.add('dark');
         else document.body.classList.remove('dark');
         return window.appSettings;
     } catch (e) {
         console.error('loadSettings error:', e);
-        window.appSettings = window.appSettings || { rate: 21, companyName: 'Tripset', darkMode: 'off', installPromptShown: false };
+        window.appSettings = window.appSettings || {
+            rate: 21,
+            companyName: 'Tripset',
+            darkMode: 'off',
+            installPromptShown: false,
+            invoiceLogoUrl: '/icon-512.png',
+            invoiceCustomerName: 'Walk-in Customer',
+            invoiceCustomerContact: '',
+            invoiceTaxPercent: 0,
+            invoicePaymentStatus: 'Pending'
+        };
         return window.appSettings;
     }
 };
@@ -2902,18 +3264,36 @@ window.loadSettings = async function() {
 window.saveSettings = async function() {
     const rate = document.getElementById('rateSetting').value || 21;
     const company = document.getElementById('companyName').value || '';
+    const invoiceLogoUrl = document.getElementById('invoiceLogoUrl')?.value || '/icon-512.png';
+    const invoiceCustomerName = document.getElementById('invoiceCustomerName')?.value || '';
+    const invoiceCustomerContact = document.getElementById('invoiceCustomerContact')?.value || '';
+    const invoiceTaxPercent = document.getElementById('invoiceTaxPercent')?.value || 0;
+    const invoicePaymentStatus = document.getElementById('invoicePaymentStatus')?.value || 'Pending';
 
     try {
         const res = await fetch('/api/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ rate: Number(rate), companyName: company })
+            body: JSON.stringify({
+                rate: Number(rate),
+                companyName: company,
+                invoiceLogoUrl: invoiceLogoUrl,
+                invoiceCustomerName: invoiceCustomerName,
+                invoiceCustomerContact: invoiceCustomerContact,
+                invoiceTaxPercent: Number(invoiceTaxPercent),
+                invoicePaymentStatus: invoicePaymentStatus
+            })
         });
         if (!res.ok) throw new Error('Failed to save');
         const s = await res.json();
         window.appSettings.rate = Number(s.rate) || 21;
         window.appSettings.companyName = String(s.companyName || 'Tripset');
+        window.appSettings.invoiceLogoUrl = String(s.invoiceLogoUrl || '/icon-512.png');
+        window.appSettings.invoiceCustomerName = String(s.invoiceCustomerName || 'Walk-in Customer');
+        window.appSettings.invoiceCustomerContact = String(s.invoiceCustomerContact || '');
+        window.appSettings.invoiceTaxPercent = Number(s.invoiceTaxPercent || 0);
+        window.appSettings.invoicePaymentStatus = String(s.invoicePaymentStatus || 'Pending');
         var rateDisplay = document.getElementById('rateDisplay');
         if (rateDisplay) rateDisplay.value = window.appSettings.rate;
         showToast(t('toast.settingsSaved'));
@@ -3266,69 +3646,11 @@ window.closeEditModal = function() {
             };
 
            window.showTab = function(id) {
-    // Smooth transition: fade out current tab
-    var currentActive = document.querySelector('.tab-content.active');
-    if (currentActive && currentActive.id !== id) {
-        currentActive.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-        currentActive.style.opacity = '0';
-        currentActive.style.transform = 'translateX(-10px)';
-        
-        setTimeout(function() {
-            // Remove active class after fade out
-            document.querySelectorAll('.tab-content')
-                .forEach(c => c.classList.remove('active'));
-            
-            // Update nav buttons
-            document.querySelectorAll('.nav-btn[data-tab]')
-                .forEach(btn => {
-                    btn.classList.remove('nav-btn-active');
-                    btn.classList.add('nav-btn-inactive');
-                });
-            
-            document.querySelectorAll('.nav-btn[data-tab="' + id + '"]')
-                .forEach(btn => {
-                    btn.classList.remove('nav-btn-inactive');
-                    btn.classList.add('nav-btn-active');
-                });
-            
-            // Show new tab with fade in
-            var newTab = document.getElementById(id);
-            if (newTab) {
-                newTab.classList.add('active');
-                newTab.style.opacity = '0';
-                newTab.style.transform = 'translateX(10px)';
-                
-                // Force reflow
-                newTab.offsetHeight;
-                
-                // Fade in
-                requestAnimationFrame(function() {
-                    newTab.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-                    newTab.style.opacity = '1';
-                    newTab.style.transform = 'translateX(0)';
-                });
-            }
-            
-            // Reset styles after transition
-            setTimeout(function() {
-                if (currentActive) {
-                    currentActive.style.opacity = '';
-                    currentActive.style.transform = '';
-                    currentActive.style.transition = '';
-                }
-                if (newTab) {
-                    newTab.style.opacity = '';
-                    newTab.style.transform = '';
-                    newTab.style.transition = '';
-                }
-            }, 300);
-        }, 200);
-    } else {
-        // No transition needed, just update
     document.querySelectorAll('.tab-content')
         .forEach(c => c.classList.remove('active'));
 
-    document.getElementById(id).classList.add('active');
+    var nextTab = document.getElementById(id);
+    if (nextTab) nextTab.classList.add('active');
 
     document.querySelectorAll('.nav-btn[data-tab]')
         .forEach(btn => {
@@ -3341,7 +3663,6 @@ window.closeEditModal = function() {
             btn.classList.remove('nav-btn-inactive');
             btn.classList.add('nav-btn-active');
         });
-    }
 
     if (id === 'entries' || id === 'company-entries' || id === 'dashboard')
         fetchTrips();
@@ -3350,22 +3671,32 @@ window.closeEditModal = function() {
         window.startTypingEffect();
 
     if (window.innerWidth < 768) window.toggleMobileNav(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
 };
 
             window.startTypingEffect = function() {
                 const text = t('home.welcome');
                 const target = document.getElementById('typing-text');
                 if(!target) return;
-                target.innerHTML = "";
-                let i = 0;
-                const type = () => {
-                    if (i < text.length) {
-                        target.innerHTML += text.charAt(i++);
-                        setTimeout(type, 120);
+                if (typingTimeout) {
+                    clearTimeout(typingTimeout);
+                    typingTimeout = null;
+                }
+
+                const finalText = String(text || 'Welcome Kamlashbhai');
+                let index = 0;
+                target.textContent = '';
+
+                (function typeNext() {
+                    if (!document.body.contains(target)) return;
+                    target.textContent = finalText.slice(0, index);
+                    if (index < finalText.length) {
+                        index += 1;
+                        typingTimeout = setTimeout(typeNext, 90);
+                    } else {
+                        typingTimeout = null;
                     }
-                };
-                type();
+                })();
             };
 
 async function fetchTrips() {
@@ -3721,9 +4052,9 @@ renderWeeklyChart(data);
 
         els.forEach(el => {
             try {
-                el.style.animation = "none";
-                void el.offsetHeight;   // reflow (important)
-                el.style.animation = "numberPop 0.35s ease";
+                el.style.setProperty('animation', 'none', 'important');
+                void el.offsetHeight;
+                el.style.setProperty('animation', 'numberPop 0.35s ease', 'important');
             } catch (err) {
                 console.log("Animation skip:", err);
             }
@@ -3768,6 +4099,205 @@ renderWeeklyChart(data);
                     return d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
                 }
 
+                function formatDateOnly(d) {
+                    const parsed = d ? new Date(d) : new Date();
+                    return parsed.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                    });
+                }
+
+                function escapeHtml(val) {
+                    return String(val == null ? '' : val)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                function getInvoiceMonth(monthOverride) {
+                    const monthInput = document.getElementById('invoiceMonth');
+                    const modalInput = document.getElementById('invoiceMonthModal');
+                    const month = (monthOverride && String(monthOverride).trim())
+                        ? String(monthOverride).trim()
+                        : ((modalInput && modalInput.value) ? modalInput.value : ((monthInput && monthInput.value) ? monthInput.value : ''));
+                    return month;
+                }
+
+                function buildInvoiceRows(items) {
+                    if (!items.length) {
+                        return '<tr><td colspan="4" style="border:1px solid #0f172a;padding:10px;text-align:center;color:#475569;">No billable trips for selected month.</td></tr>';
+                    }
+                    return items.map(function(it) {
+                        const qty = Number(it.quantity) || 0;
+                        const price = Number(it.price) || 0;
+                        const total = Number(it.total) || 0;
+                        return ''
+                            + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;vertical-align:top;word-break:break-word;">' + escapeHtml(it.itemName || 'Service') + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + qty.toFixed(2) + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + formatInr(price) + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;font-weight:700;">' + formatInr(total) + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+
+                function buildInvoiceHtml(model) {
+                    const logoHtml = model.companyLogoUrl
+                        ? '<img src="' + escapeHtml(model.companyLogoUrl) + '" alt="Company Logo" style="width:44px;height:44px;object-fit:contain;border:1px solid #0f172a;padding:4px;background:#fff;" crossorigin="anonymous">'
+                        : '<div style="width:44px;height:44px;border:1px solid #0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;">T</div>';
+
+                    return ''
+                        + '<div id="invoiceDocument" style="width:190mm;min-height:277mm;margin:0 auto;padding:0;background:#fff;color:#0f172a;font-size:12px;line-height:1.45;box-sizing:border-box;">'
+                        +   '<div style="border:1px solid #0f172a;padding:10mm;box-sizing:border-box;">'
+                        +     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10mm;">'
+                        +       '<div style="display:flex;gap:10px;align-items:flex-start;">'
+                        +         logoHtml
+                        +         '<div>'
+                        +           '<div style="font-size:26px;font-weight:900;letter-spacing:.02em;">Tripset</div>'
+                        +           '<div style="font-size:11px;color:#334155;text-transform:uppercase;letter-spacing:.16em;margin-top:2px;">Tax Invoice</div>'
+                        +         '</div>'
+                        +       '</div>'
+                        +       '<table style="border-collapse:collapse;min-width:66mm;font-size:11px;">'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Invoice Number</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceNumber) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Date</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceDate) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Month</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceMonthLabel) + '</td></tr>'
+                        +       '</table>'
+                        +     '</div>'
+
+                        +     '<div style="margin-top:8mm;border:1px solid #0f172a;padding:8px;">'
+                        +       '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;">Bill To</div>'
+                        +       '<div><span style="font-weight:700;">Customer Name:</span> ' + escapeHtml(model.customerName) + '</div>'
+                        +       '<div><span style="font-weight:700;">Contact Details:</span> ' + escapeHtml(model.customerContact || 'N/A') + '</div>'
+                        +     '</div>'
+
+                        +     '<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8mm;">'
+                        +       '<thead>'
+                        +         '<tr>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:left;width:52%;">Item Name</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Quantity</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Price</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Total</th>'
+                        +         '</tr>'
+                        +       '</thead>'
+                        +       '<tbody>' + buildInvoiceRows(model.items) + '</tbody>'
+                        +     '</table>'
+
+                        +     '<div style="margin-top:8mm;display:flex;justify-content:flex-end;">'
+                        +       '<table style="width:82mm;border-collapse:collapse;font-size:12px;">'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Subtotal</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;">' + formatInr(model.subtotal) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Tax (' + model.taxPercent.toFixed(2) + '%)</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;">' + formatInr(model.taxAmount) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;font-weight:900;">Grand Total</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;font-weight:900;">' + formatInr(model.grandTotal) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Payment Status</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;font-weight:700;">' + escapeHtml(model.paymentStatus) + '</td></tr>'
+                        +       '</table>'
+                        +     '</div>'
+
+                        +     '<div style="margin-top:16mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;">'
+                        +       '<div style="font-size:10px;color:#475569;max-width:56%;">This invoice is computer generated and intended for accounting records.</div>'
+                        +       '<div style="text-align:center;min-width:65mm;">'
+                        +         '<div style="height:22mm;"></div>'
+                        +         '<div style="border-top:1px solid #0f172a;padding-top:5px;font-size:11px;font-weight:700;">Authorized Signature</div>'
+                        +       '</div>'
+                        +     '</div>'
+                        +   '</div>'
+                        + '</div>';
+                }
+
+                async function prepareInvoice(monthOverride) {
+                    const month = getInvoiceMonth(monthOverride);
+                    if (!month) {
+                        showToast(t('toast.selectInvoiceMonth'));
+                        return null;
+                    }
+
+                    const res = await fetch('/api/invoice/' + month, { cache: 'no-store' });
+                    if (!res.ok) {
+                        showToast(t('toast.invoiceFailed'));
+                        return null;
+                    }
+
+                    const data = await res.json();
+                    const rawItems = Array.isArray(data.items) ? data.items : [];
+                    const items = rawItems.map(function(it) {
+                        return {
+                            itemName: String(it.itemName || 'Service'),
+                            quantity: Number(it.quantity) || 0,
+                            price: Number(it.price) || 0,
+                            total: Number(it.total) || 0
+                        };
+                    });
+                    const subtotal = Number.isFinite(Number(data.subtotal))
+                        ? Number(data.subtotal)
+                        : items.reduce(function(acc, it) { return acc + (Number(it.total) || 0); }, 0);
+                    const taxPercent = Math.max(0, Number(data.taxPercent) || 0);
+                    const taxAmount = Number.isFinite(Number(data.taxAmount))
+                        ? Number(data.taxAmount)
+                        : (subtotal * taxPercent / 100);
+                    const grandTotal = Number.isFinite(Number(data.grandTotal))
+                        ? Number(data.grandTotal)
+                        : subtotal + taxAmount;
+
+                    const model = {
+                        companyName: 'Tripset',
+                        companyLogoUrl: String(data.companyLogoUrl || '/icon-512.png'),
+                        invoiceNumber: String(data.invoiceNumber || ('INV-' + String(month).replace('-', '') + '-001')),
+                        invoiceDate: formatDateOnly(data.invoiceDate),
+                        invoiceMonthLabel: formatMonthLabel(data.month || month),
+                        customerName: String((data.customer && data.customer.name) || 'Walk-in Customer'),
+                        customerContact: String((data.customer && data.customer.contact) || ''),
+                        items: items,
+                        subtotal: subtotal,
+                        taxPercent: taxPercent,
+                        taxAmount: taxAmount,
+                        grandTotal: grandTotal,
+                        paymentStatus: String(data.paymentStatus || 'Pending')
+                    };
+
+                    const content = document.getElementById('invoiceContent');
+                    if (!content) {
+                        showToast(t('toast.invoiceTemplateMissing'));
+                        return null;
+                    }
+
+                    const html = buildInvoiceHtml(model);
+                    content.innerHTML = html;
+
+                    return {
+                        month: month,
+                        html: html,
+                        content: content
+                    };
+                }
+
+                async function downloadInvoice(monthOverride) {
+                    const container = document.getElementById('invoiceContainer');
+                    try {
+                        showToast(t('toast.generatingInvoice'));
+                        const prepared = await prepareInvoice(monthOverride);
+                        if (!prepared) return;
+
+                        if (container) container.classList.remove('hidden');
+
+                        await html2pdf().set({
+                            margin: [10, 10, 10, 10],
+                            filename: 'Invoice_' + prepared.month + '.pdf',
+                            image: { type: 'jpeg', quality: 0.98 },
+                            html2canvas: { scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff' },
+                            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+                            pagebreak: { mode: ['css', 'legacy'], avoid: ['tr'] }
+                        }).from(prepared.content).save();
+
+                        showToast(t('toast.invoiceDownloaded'));
+                    } catch (e) {
+                        console.error('INVOICE DOWNLOAD ERROR:', e);
+                        showToast(t('toast.invoiceGenerationFailed'));
+                    } finally {
+                        if (container) container.classList.add('hidden');
+                    }
+                }
+
                 window.openInvoiceModal = function() {
                     var m = document.getElementById('invoiceModal');
                     var inp = document.getElementById('invoiceMonthModal');
@@ -3795,101 +4325,8 @@ renderWeeklyChart(data);
                     window.generateInvoice(month);
                 };
 
-                window.generateInvoice = async function(monthOverride) {
-                    try {
-                        const monthInput = document.getElementById('invoiceMonth');
-                        const modalInput = document.getElementById('invoiceMonthModal');
-                        const month = (monthOverride && String(monthOverride).trim())
-                            ? String(monthOverride).trim()
-                            : ((modalInput && modalInput.value) ? modalInput.value : ((monthInput && monthInput.value) ? monthInput.value : ''));
-                        if (!month) {
-                            showToast(t('toast.selectInvoiceMonth'));
-                            return;
-                        }
-
-                        showToast(t('toast.generatingInvoice'));
-
-                        const res = await fetch('/api/invoice/' + month, { cache: 'no-store' });
-                        if (!res.ok) {
-                            showToast(t('toast.invoiceFailed'));
-                            return;
-                        }
-
-                        const data = await res.json();
-                        const totals = data.totals || {};
-                        const companyName = data.companyName || 'Tripset';
-                        const monthLabel = formatMonthLabel(data.month || month);
-                        const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-
-                        const content = document.getElementById('invoiceContent');
-                        if (!content) {
-                            showToast(t('toast.invoiceTemplateMissing'));
-                            return;
-                        }
-
-                        var html = ''
-                            + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;">'
-                            +   '<div>'
-                            +     '<div style="font-size:22px;font-weight:900;color:#0f172a;">' + String(companyName) + '</div>'
-                            +     '<div style="font-size:12px;color:#64748b;margin-top:2px;">' + t('invoice.monthlyTripInvoice') + '</div>'
-                            +   '</div>'
-                            +   '<div style="text-align:right;font-size:12px;color:#64748b;">'
-                            +     '<div><span style="font-weight:700;color:#0f172a;">' + t('invoice.invoiceMonthLabel') + '</span> ' + String(monthLabel) + '</div>'
-                            +     '<div><span style="font-weight:700;color:#0f172a;">' + t('invoice.generatedLabel') + '</span> ' + String(generatedOn) + '</div>'
-                            +   '</div>'
-                            + '</div>'
-                            + '<div style="border-top:1px solid #e2e8f0;margin:12px 0;"></div>'
-                            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12px;margin-bottom:16px;">'
-                            +   '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">'
-                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">' + t('dashboard.trips') + '</div>'
-                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>' + t('dashboard.totalTrips') + '</span><span style="font-weight:800;">' + String(totals.totalTrips || 0) + '</span></div>'
-                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>' + t('dashboard.totalKm') + '</span><span style="font-weight:800;">' + String((Number(totals.totalKm) || 0).toFixed(2)) + '</span></div>'
-                            +   '</div>'
-                            +   '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">'
-                            +     '<div style="color:#64748b;font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;">' + t('invoice.totals') + '</div>'
-                            +     '<div style="margin-top:10px;display:flex;justify-content:space-between;"><span>' + t('dashboard.entryTotal') + '</span><span style="font-weight:900;color:#059669;">' + formatInr(totals.entryTotal) + '</span></div>'
-                            +     '<div style="margin-top:6px;display:flex;justify-content:space-between;"><span>' + t('company.totalRate') + '</span><span style="font-weight:900;color:#f97316;">' + formatInr(totals.companyTotal) + '</span></div>'
-                            +   '</div>'
-                            + '</div>'
-                            + '<div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-size:12px;">'
-                            +   '<div style="background:#f8fafc;padding:10px 12px;font-weight:900;color:#0f172a;">' + t('invoice.expenseBreakdown') + '</div>'
-                            +   '<div style="padding:12px;">'
-                            +     '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>CNG</span><span style="font-weight:800;">' + formatInr(totals.totalCng) + '</span></div>'
-                            +     '<div style="display:flex;justify-content:space-between;"><span>' + t('entry.otherExpense') + '</span><span style="font-weight:800;">' + formatInr(totals.totalOtherExpense) + '</span></div>'
-                            +   '</div>'
-                            + '</div>'
-                            + '<div style="margin-top:16px;border:1px solid #bbf7d0;background:#ecfdf5;border-radius:12px;padding:12px;font-size:12px;">'
-                            +   '<div style="display:flex;justify-content:space-between;align-items:center;">'
-                            +     '<span style="font-weight:900;color:#065f46;">Net Profit</span>'
-                            +     '<span style="font-weight:900;font-size:16px;color:#064e3b;">' + formatInr(totals.netProfit) + '</span>'
-                            +   '</div>'
-                            + '</div>'
-                            + '<div style="margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;color:#64748b;">'
-                            +   '<div>'
-                            +     '<div style="height:36px;border-bottom:1px solid #cbd5e1;width:180px;"></div>'
-                            +     '<div style="margin-top:6px;">' + t('invoice.authorizedSignatory') + '</div>'
-                            +   '</div>'
-                            +   '<div style="text-align:right;">' + t('invoice.thankYou') + '</div>'
-                            + '</div>';
-
-                        content.innerHTML = html;
-
-                        const container = document.getElementById('invoiceContainer');
-                        if (container) container.classList.remove('hidden');
-
-                        await html2pdf().set({
-                            margin: 10,
-                            filename: 'Invoice_' + month + '.pdf',
-                            image: { type: 'jpeg', quality: 0.98 },
-                            html2canvas: { scale: 2 },
-                            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                        }).from(content).save();
-
-                        showToast(t('toast.invoiceDownloaded'));
-                    } catch (e) {
-                        console.error('INVOICE UI ERROR:', e);
-                        showToast(t('toast.invoiceGenerationFailed'));
-                    }
+                window.generateInvoice = function(monthOverride) {
+                    return downloadInvoice(monthOverride);
                 };
             })();
 
