@@ -18,7 +18,50 @@ const crypto = require('crypto');
     app.use(express.urlencoded({ extended: true }));
 
     // Session (must be before routes that use it)
-    const mongoURI = "mongodb+srv://vedteic:Pratham%4054301@vedteix.yby9dng.mongodb.net/tripkamlesh-db";
+    const mongoURI = process.env.MONGO_URI || "mongodb+srv://vedteic:Pratham%4054301@vedteix.yby9dng.mongodb.net/tripkamlesh-db";
+    const AUTH_ACCOUNTS = Object.freeze([
+        {
+            username: '9033337363',
+            password: '9033337363',
+            userKey: 'kamlesh',
+            displayName: 'Kamlesh',
+            dbFolder: 'kamlesh',
+            dbName: process.env.KAMLESH_DB_NAME || 'kamlesh',
+            legacyDbName: process.env.KAMLESH_LEGACY_DB_NAME || 'tripkamlesh-db'
+        },
+        {
+            username: '7777967668',
+            password: '7777967668',
+            userKey: 'pratham',
+            displayName: 'Pratham',
+            dbFolder: 'pratham',
+            dbName: process.env.PRATHAM_DB_NAME || 'pratham',
+            legacyDbName: ''
+        }
+    ]);
+    const ACCOUNT_BY_KEY = new Map(AUTH_ACCOUNTS.map((account) => [account.userKey, account]));
+    const DEFAULT_ACCOUNT = AUTH_ACCOUNTS[0];
+
+function getAccountDisplayName(account) {
+    return String((account && account.displayName) || DEFAULT_ACCOUNT.displayName || 'Kamlesh').trim() || 'Kamlesh';
+}
+
+function applyAccountNameBranding(html, account) {
+    const displayName = getAccountDisplayName(account);
+    const lowerDisplayName = displayName.toLowerCase();
+    const brandedName = `Trip${displayName}`;
+    const brandedLowerName = brandedName.toLowerCase();
+    return String(html || '')
+        .replace(/Kamlashbhai/g, `${displayName}bhai`)
+        .replace(/Tripkamlesh/g, brandedName)
+        .replace(/tripkamlesh/g, brandedLowerName)
+        .replace(/કમલેશ/g, displayName)
+        .replace(/कमलेश/g, displayName)
+        .replace(/\bKamlesh\b/g, displayName)
+        .replace(/\bkamlesh\b/g, lowerDisplayName);
+}
+
+const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260304';
     
     // Get MongoStore - connect-mongo v6 exports it as .default
     let MongoStore;
@@ -49,15 +92,31 @@ const crypto = require('crypto');
 
     // Serve PWA files with no-cache so updates apply immediately
     app.get('/manifest.json', (req, res) => {
-        res.setHeader('Content-Type', 'application/manifest+json');
-        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.sendFile(path.join(__dirname, 'manifest.json'));
     });
 
     app.get('/sw.js', (req, res) => {
         res.setHeader('Content-Type', 'application/javascript');
-        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Service-Worker-Allowed', '/');
         res.sendFile(path.join(__dirname, 'sw.js'));
+    });
+
+    app.get('/favicon.ico', (req, res) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        res.sendFile(path.join(__dirname, 'favicon.ico'));
+    });
+
+    app.get('/icon-192.png', (req, res) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        res.sendFile(path.join(__dirname, 'icon-192.png'));
+    });
+
+    app.get('/icon-512.png', (req, res) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        res.sendFile(path.join(__dirname, 'icon-512.png'));
     });
 
     // Serve static files after explicit PWA routes so manifest/sw headers stay controlled.
@@ -87,8 +146,6 @@ const crypto = require('crypto');
         createdAt: { type: Date, default: Date.now }
     });
 
-    const Trip = mongoose.model('Trip', tripSchema);
-
     // App settings (stored in MongoDB only - no localStorage)
     const appSettingsSchema = new mongoose.Schema(
         {
@@ -110,8 +167,6 @@ const crypto = require('crypto');
         { collection: 'tripset_settings', versionKey: false }
     );
 
-const AppSettings = mongoose.model('AppSettings', appSettingsSchema);
-
 const pinStateSchema = new mongoose.Schema(
     {
         key: { type: String, unique: true, required: true },
@@ -121,8 +176,143 @@ const pinStateSchema = new mongoose.Schema(
     { collection: 'tripset_pin_state', versionKey: false }
 );
 
-const PinState = mongoose.model('PinState', pinStateSchema);
 const DEFAULT_PIN = '6287';
+const dbContextCache = new Map();
+const legacyMigrationCache = new Map();
+
+function findAccountByCredentials(username, password) {
+    return AUTH_ACCOUNTS.find((account) => account.username === username && account.password === password) || null;
+}
+
+function setSessionAccount(req, account) {
+    req.session.isAuthenticated = true;
+    req.session.authUserKey = account.userKey;
+    req.session.authUsername = account.username;
+    req.session.displayName = getAccountDisplayName(account);
+    req.session.dbFolder = account.dbFolder;
+    req.session.dbName = account.dbName;
+}
+
+function resolveSessionAccount(req) {
+    if (!req.session || !req.session.isAuthenticated) return null;
+
+    const sessionKey = String(req.session.authUserKey || '').trim();
+    const sessionUsername = String(req.session.authUsername || '').trim();
+    let account = ACCOUNT_BY_KEY.get(sessionKey) || null;
+    if (!account) {
+        account = AUTH_ACCOUNTS.find((item) => item.username === sessionUsername) || DEFAULT_ACCOUNT;
+    }
+
+    if (!account) return null;
+    req.session.authUserKey = account.userKey;
+    req.session.authUsername = account.username;
+    req.session.displayName = getAccountDisplayName(account);
+    req.session.dbFolder = account.dbFolder;
+    req.session.dbName = account.dbName;
+    return account;
+}
+
+function getDbContextByName(dbName) {
+    const safeDbName = String(dbName || '').trim();
+    if (!safeDbName) throw new Error('Missing database name');
+
+    if (dbContextCache.has(safeDbName)) {
+        return dbContextCache.get(safeDbName);
+    }
+
+    const db = mongoose.connection.useDb(safeDbName, { useCache: true });
+    const context = {
+        db,
+        Trip: db.models.Trip || db.model('Trip', tripSchema),
+        AppSettings: db.models.AppSettings || db.model('AppSettings', appSettingsSchema),
+        PinState: db.models.PinState || db.model('PinState', pinStateSchema)
+    };
+    dbContextCache.set(safeDbName, context);
+    return context;
+}
+
+async function ensureLegacyDataMigrated(account, targetContext) {
+    const legacyDbName = String(account && account.legacyDbName ? account.legacyDbName : '').trim();
+    if (!legacyDbName || legacyDbName === account.dbName) return;
+
+    const migrationKey = `${account.userKey}:${legacyDbName}->${account.dbName}`;
+    if (legacyMigrationCache.has(migrationKey)) {
+        await legacyMigrationCache.get(migrationKey);
+        return;
+    }
+
+    const migrationPromise = (async () => {
+        const [targetTripCount, targetSettings, targetPin] = await Promise.all([
+            targetContext.Trip.estimatedDocumentCount(),
+            targetContext.AppSettings.findOne({ key: 'singleton' }).lean(),
+            targetContext.PinState.findOne({ key: 'singleton' }).lean()
+        ]);
+
+        const needsTripMigration = targetTripCount === 0;
+        const needsSettingsMigration = !targetSettings;
+        const needsPinMigration = !targetPin;
+        if (!needsTripMigration && !needsSettingsMigration && !needsPinMigration) return;
+
+        const legacyContext = getDbContextByName(legacyDbName);
+        const [legacyTrips, legacySettings, legacyPin] = await Promise.all([
+            needsTripMigration ? legacyContext.Trip.find().lean() : Promise.resolve([]),
+            needsSettingsMigration ? legacyContext.AppSettings.findOne({ key: 'singleton' }).lean() : Promise.resolve(null),
+            needsPinMigration ? legacyContext.PinState.findOne({ key: 'singleton' }).lean() : Promise.resolve(null)
+        ]);
+
+        if (!legacyTrips.length && !legacySettings && !legacyPin) return;
+        let migrated = false;
+
+        if (needsTripMigration && legacyTrips.length) {
+            const tripsToInsert = legacyTrips.map((trip) => {
+                const { _id, __v, ...tripData } = trip;
+                return tripData;
+            });
+            if (tripsToInsert.length) {
+                await targetContext.Trip.insertMany(tripsToInsert, { ordered: false });
+                migrated = true;
+            }
+        }
+
+        if (needsSettingsMigration && legacySettings) {
+            const { _id, __v, ...settingsDoc } = legacySettings;
+            await targetContext.AppSettings.updateOne(
+                { key: 'singleton' },
+                settingsDoc,
+                { upsert: true }
+            );
+            migrated = true;
+        }
+
+        if (needsPinMigration && legacyPin) {
+            const { _id, __v, ...pinDoc } = legacyPin;
+            await targetContext.PinState.updateOne(
+                { key: 'singleton' },
+                pinDoc,
+                { upsert: true }
+            );
+            migrated = true;
+        }
+
+        if (migrated) {
+            console.log(`✅ Legacy migration completed for ${account.userKey}: ${legacyDbName} -> ${account.dbName}`);
+        }
+    })().catch((err) => {
+        legacyMigrationCache.delete(migrationKey);
+        throw err;
+    });
+
+    legacyMigrationCache.set(migrationKey, migrationPromise);
+    await migrationPromise;
+}
+
+async function getDbContextForRequest(req) {
+    const account = req.authAccount || resolveSessionAccount(req);
+    if (!account) return null;
+    const context = getDbContextByName(account.dbName);
+    await ensureLegacyDataMigrated(account, context);
+    return { account, ...context };
+}
 
 function normalizePin(pin) {
     const raw = String(pin == null ? '' : pin).trim();
@@ -152,10 +342,10 @@ function hashPin(pin) {
     return crypto.createHash('sha256').update(normalizePin(pin)).digest('hex');
 }
 
-async function getPinDoc() {
-    let doc = await PinState.findOne({ key: 'singleton' });
+async function getPinDoc(PinStateModel) {
+    let doc = await PinStateModel.findOne({ key: 'singleton' });
     if (!doc) {
-        doc = await PinState.create({
+        doc = await PinStateModel.create({
             key: 'singleton',
             pinHash: hashPin(DEFAULT_PIN),
             updatedAt: new Date()
@@ -181,12 +371,13 @@ async function getPinDoc() {
     return doc;
 }
 
-    async function getSettings() {
-        let doc = await AppSettings.findOne({ key: 'singleton' }).lean();
+    async function getSettings(AppSettingsModel, account) {
+        const defaultCompanyName = getAccountDisplayName(account);
+        let doc = await AppSettingsModel.findOne({ key: 'singleton' }).lean();
         if (!doc) {
-            doc = await AppSettings.create({
+            doc = await AppSettingsModel.create({
                 key: 'singleton',
-                companyName: 'Tripset',
+                companyName: defaultCompanyName,
                 rate: 21,
                 darkMode: 'off',
                 installPromptShown: false,
@@ -199,7 +390,7 @@ async function getPinDoc() {
             doc = doc.toObject ? doc.toObject() : doc;
         }
         return {
-            companyName: (doc && doc.companyName) ? doc.companyName : 'Tripset',
+            companyName: (doc && doc.companyName) ? doc.companyName : defaultCompanyName,
             rate: (doc && doc.rate != null) ? Number(doc.rate) : 21,
             darkMode: (doc && doc.darkMode) ? doc.darkMode : 'off',
             installPromptShown: !!(doc && doc.installPromptShown),
@@ -211,15 +402,17 @@ async function getPinDoc() {
         };
     }
 
-    async function getCompanyName() {
-        const s = await getSettings();
+    async function getCompanyName(AppSettingsModel, account) {
+        const s = await getSettings(AppSettingsModel, account);
         return s.companyName;
     }
 
     // Settings API
-    app.get('/api/settings', async (req, res) => {
+    app.get('/api/settings', requireApiAuth, async (req, res) => {
         try {
-            const settings = await getSettings();
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
+            const settings = await getSettings(context.AppSettings, context.account);
             res.json(settings);
         } catch (err) {
             res.status(500).json({ error: err.message });
@@ -239,9 +432,12 @@ async function getPinDoc() {
                 invoiceTaxPercent,
                 invoicePaymentStatus
             } = req.body;
-            let doc = await AppSettings.findOne({ key: 'singleton' });
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
+
+            let doc = await context.AppSettings.findOne({ key: 'singleton' });
             if (!doc) {
-                doc = await AppSettings.create({ key: 'singleton' });
+                doc = await context.AppSettings.create({ key: 'singleton' });
             }
             if (companyName != null) doc.companyName = String(companyName);
             if (rate != null) doc.rate = Number(rate);
@@ -276,32 +472,43 @@ async function getPinDoc() {
         }
     });
 
-    // --- AUTH ---
-    const AUTH_USER = '9033337363';
-    const AUTH_PASS = '9033337363';
-
     function requireAuth(req, res, next) {
-        if (req.session && req.session.isAuthenticated) return next();
+        const account = resolveSessionAccount(req);
+        if (account) {
+            req.authAccount = account;
+            return next();
+        }
         res.redirect(302, '/login');
     }
 
     function requireApiAuth(req, res, next) {
-        if (req.session && req.session.isAuthenticated) return next();
+        const account = resolveSessionAccount(req);
+        if (account) {
+            req.authAccount = account;
+            return next();
+        }
         res.status(401).json({ error: 'Unauthorized' });
     }
 
     app.post('/auth/login', (req, res) => {
         const username = String(req.body.username || '').trim();
         const password = String(req.body.password || '').trim();
-        if (username === AUTH_USER && password === AUTH_PASS) {
-            req.session.isAuthenticated = true;
+        const account = findAccountByCredentials(username, password);
+
+        if (account) {
+            setSessionAccount(req, account);
             req.session.save((err) => {
                 if (err) {
                     console.error('Session save error:', err);
                     return res.status(500).json({ error: 'Failed to save session' });
                 }
-                console.log('✅ Login successful, session saved');
-                return res.json({ success: true });
+                console.log(`✅ Login successful for ${account.userKey} (${account.dbFolder})`);
+                return res.json({
+                    success: true,
+                    user: account.userKey,
+                    dbFolder: account.dbFolder,
+                    displayName: getAccountDisplayName(account)
+                });
             });
         } else {
             return res.status(401).json({ error: 'Invalid credentials' });
@@ -314,12 +521,20 @@ async function getPinDoc() {
     });
 
 app.get('/api/auth/status', (req, res) => {
-    res.json({ isAuthenticated: !!(req.session && req.session.isAuthenticated) });
+    const account = resolveSessionAccount(req);
+    res.json({
+        isAuthenticated: !!account,
+        user: account ? account.userKey : null,
+        dbFolder: account ? account.dbFolder : null,
+        displayName: account ? getAccountDisplayName(account) : null
+    });
 });
 
 app.get('/api/pin/status', requireApiAuth, async (req, res) => {
     try {
-        const doc = await getPinDoc();
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
+        const doc = await getPinDoc(context.PinState);
         res.json({ isSet: !!String(doc.pinHash || '').trim() });
     } catch (err) {
         res.status(500).json({ error: 'Failed to get PIN status' });
@@ -328,12 +543,14 @@ app.get('/api/pin/status', requireApiAuth, async (req, res) => {
 
 app.post('/api/pin/set', requireApiAuth, async (req, res) => {
     try {
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
         const pin = normalizePin(req.body.pin || '');
         if (!isValidPin(pin)) {
             return res.status(400).json({ error: 'PIN must be 4 digits' });
         }
 
-        const doc = await getPinDoc();
+        const doc = await getPinDoc(context.PinState);
         if (String(doc.pinHash || '').trim()) {
             return res.status(409).json({ error: 'PIN already set. Use change PIN.' });
         }
@@ -348,12 +565,14 @@ app.post('/api/pin/set', requireApiAuth, async (req, res) => {
 
 app.post('/api/pin/verify', requireApiAuth, async (req, res) => {
     try {
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
         const pin = normalizePin(req.body.pin || '');
         if (!isValidPin(pin)) {
             return res.status(400).json({ error: 'PIN must be 4 digits' });
         }
 
-        const doc = await getPinDoc();
+        const doc = await getPinDoc(context.PinState);
         const savedHash = String(doc.pinHash || '').trim();
         if (!savedHash) {
             return res.status(400).json({ error: 'PIN not set' });
@@ -379,13 +598,15 @@ app.post('/api/pin/verify', requireApiAuth, async (req, res) => {
 
 app.post('/api/pin/change', requireApiAuth, async (req, res) => {
     try {
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
         const currentPin = normalizePin(req.body.currentPin || '');
         const newPin = normalizePin(req.body.newPin || '');
         if (!isValidPin(currentPin) || !isValidPin(newPin)) {
             return res.status(400).json({ error: 'PIN must be 4 digits' });
         }
 
-        const doc = await getPinDoc();
+        const doc = await getPinDoc(context.PinState);
         const savedHash = String(doc.pinHash || '').trim();
         if (!savedHash || hashPin(currentPin) !== savedHash) {
             return res.status(401).json({ error: 'Current PIN is wrong' });
@@ -403,7 +624,9 @@ app.post('/api/pin/change', requireApiAuth, async (req, res) => {
 // API Routes - OLD ENTRIES FIRST (Sort 1) - protected
 app.get('/api/trips', requireApiAuth, async (req, res) => {
         try {
-            const trips = await Trip.find().sort({ createdAt: 1 });
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
+            const trips = await context.Trip.find().sort({ createdAt: 1 });
             res.json(trips);
         } catch (err) {
             res.status(500).json({ error: err.message });
@@ -412,12 +635,14 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
 
     app.post('/api/trips', requireApiAuth, async (req, res) => {
         try {
-            const count = await Trip.countDocuments();
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
+            const count = await context.Trip.countDocuments();
             if (count >= 10000) {
-                const oldest = await Trip.find().sort({ createdAt: 1 }).limit(1);
-                if (oldest.length > 0) await Trip.deleteOne({ _id: oldest[0]._id });
+                const oldest = await context.Trip.find().sort({ createdAt: 1 }).limit(1);
+                if (oldest.length > 0) await context.Trip.deleteOne({ _id: oldest[0]._id });
             }
-            const newTrip = new Trip(req.body);
+            const newTrip = new context.Trip(req.body);
             await newTrip.save();
             res.json(newTrip);
         } catch (err) {
@@ -427,7 +652,9 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
 
    app.delete('/api/trips/:id', requireApiAuth, async (req, res) => {
     try {
-        await Trip.findByIdAndDelete(req.params.id);
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
+        await context.Trip.findByIdAndDelete(req.params.id);
         res.json({ success: true });
 
     } catch (err) {
@@ -442,6 +669,8 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
     // API: Bulk Insert for Restore
     app.post('/api/trips/bulk', requireApiAuth, async (req, res) => {
         try {
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
             const trips = req.body.trips;
             
             if (!Array.isArray(trips)) {
@@ -471,7 +700,7 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
             });
 
             // Insert all trips
-            const result = await Trip.insertMany(tripsToInsert, { ordered: false });
+            const result = await context.Trip.insertMany(tripsToInsert, { ordered: false });
             
             res.json({ 
                 success: true, 
@@ -491,7 +720,9 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
     // API: Update Trip
 app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     try {
-        const updated = await Trip.findByIdAndUpdate(
+        const context = await getDbContextForRequest(req);
+        if (!context) return res.status(401).json({ error: 'Unauthorized' });
+        const updated = await context.Trip.findByIdAndUpdate(
             req.params.id,
             req.body,
             { new: true }
@@ -506,6 +737,8 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     // GET /api/invoice/:month  (month format: YYYY-MM)
     app.get('/api/invoice/:month', requireApiAuth, async (req, res) => {
         try {
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
             const monthStr = String(req.params.month || '').trim(); // "YYYY-MM"
             if (!/^\d{4}-\d{2}$/.test(monthStr)) {
                 return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM.' });
@@ -515,12 +748,12 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
             const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
             const end = new Date(year, month, 1, 0, 0, 0, 0); // exclusive
 
-            const trips = await Trip.find({ createdAt: { $gte: start, $lt: end } })
+            const trips = await context.Trip.find({ createdAt: { $gte: start, $lt: end } })
                 .sort({ createdAt: 1 })
                 .lean();
-            const settings = await getSettings();
+            const settings = await getSettings(context.AppSettings, context.account);
 
-            const companyName = String(settings.companyName || 'Tripset');
+            const companyName = String(settings.companyName || getAccountDisplayName(context.account));
             const safeTaxPercent = Math.max(0, Number(settings.invoiceTaxPercent) || 0);
             const items = trips.map((t) => {
                 const km = Number(t.km) || 0;
@@ -588,14 +821,17 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         ].join('; ');
         res.setHeader('Content-Security-Policy', csp);
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.send(`
+        const pageHtml = `
 <!DOCTYPE html>
 <html lang="gu">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Tripset</title>
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json?v=${PWA_ASSET_VERSION}" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <link rel="shortcut icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <link rel="apple-touch-icon" href="/icon-192.png?v=${PWA_ASSET_VERSION}">
     <meta name="theme-color" content="#F97316">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -714,7 +950,8 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     </script>
 </body>
 </html>
-        `);
+        `;
+        res.send(pageHtml);
     });
 
     app.get('/', requireAuth, (req, res) => {
@@ -732,7 +969,7 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         res.setHeader('Content-Security-Policy', csp);
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
-        res.send(`
+        const pageHtml = `
     <!DOCTYPE html>
     <html lang="gu">
     <head>
@@ -741,11 +978,13 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
         <title>Tripset (Invoice Build)</title>
         <meta name="description" content="Tripset is a simple and easy to use trip management system for your business.">
-        <link rel="manifest" href="/manifest.json" />
+        <link rel="manifest" href="/manifest.json?v=${PWA_ASSET_VERSION}" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+<link rel="shortcut icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
 <meta name="theme-color" content="#F97316">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png?v=${PWA_ASSET_VERSION}">
 <meta name="mobile-web-app-capable" content="yes">
         <meta name="author" content="Tripkamlesh">
         <meta name="keywords" content="trip, management, system, business, tripset">
@@ -1378,6 +1617,10 @@ body.dark .input-field::placeholder {
 </button>
 
                 </div>
+                <div class="hidden md:flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs font-bold text-slate-200">
+                    <span class="uppercase tracking-wide text-slate-400">Profile</span>
+                    <span data-user-display-name>Kamlesh</span>
+                </div>
             </div>
         </nav>
         <div id="mobileNavBackdrop" onclick="window.toggleMobileNav(false)"></div>
@@ -1386,6 +1629,7 @@ body.dark .input-field::placeholder {
                 <div class="text-lg font-extrabold text-orange-500 uppercase italic tracking-tight">Tripset</div>
                 <button type="button" class="nav-btn nav-btn-inactive" onclick="window.toggleMobileNav(false)">✕</button>
             </div>
+            <div class="mb-4 text-xs font-bold text-slate-300">Profile: <span data-user-display-name>Kamlesh</span></div>
             <div class="flex flex-col gap-2">
                 <button data-tab="home" onclick="window.showTab('home')" class="nav-btn nav-btn-active" data-i18n="nav.home">Home</button>
                 <button data-tab="dashboard" onclick="window.showTab('dashboard')" class="nav-btn nav-btn-inactive" data-i18n="nav.dashboard">Dashboard</button>
@@ -1541,6 +1785,10 @@ body.dark .input-field::placeholder {
 
          <div id="dashboard" class="tab-content mt-6">
          <div class="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <div class="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+        <span>User</span>
+        <span data-user-display-name>Kamlesh</span>
+    </div>
 
     <!-- Invoice Generator -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 w-full">
@@ -2019,6 +2267,30 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         console.log("SCRIPT LOADED ✅ (Invoice Build)");
 
         var appInitialized = false;
+        window.authProfile = { user: 'kamlesh', dbFolder: 'kamlesh', displayName: 'Kamlesh' };
+        window.currentUserDisplayName = 'Kamlesh';
+
+        function setAuthenticatedIdentity(status) {
+            var displayName = String((status && status.displayName) || window.currentUserDisplayName || 'Kamlesh').trim() || 'Kamlesh';
+            window.currentUserDisplayName = displayName;
+            window.authProfile = {
+                user: String((status && status.user) || ''),
+                dbFolder: String((status && status.dbFolder) || ''),
+                displayName: displayName
+            };
+            if (i18nResources && i18nResources.en && i18nResources.en.translation && i18nResources.en.translation.home) {
+                i18nResources.en.translation.home.welcome = 'Welcome ' + displayName;
+            }
+            if (i18nResources && i18nResources.gu && i18nResources.gu.translation && i18nResources.gu.translation.home) {
+                i18nResources.gu.translation.home.welcome = 'સ્વાગત છે ' + displayName;
+            }
+            if (i18nResources && i18nResources.hi && i18nResources.hi.translation && i18nResources.hi.translation.home) {
+                i18nResources.hi.translation.home.welcome = 'स्वागत है ' + displayName;
+            }
+            document.querySelectorAll('[data-user-display-name]').forEach(function(el) {
+                el.textContent = displayName;
+            });
+        }
 
         function setDisplayImportant(el, value) {
             if (!el) return;
@@ -2133,7 +2405,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         dailyTrend: "📅 Daily Trend", profitAnalysis: "💸 Profit Analysis", weeklyReport: "📆 Weekly Report",
                         monthlySummary: "Monthly Summary", month: "Month", trips: "Trips", km: "KM"
                     },
-                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlashbhai" },
+                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlesh" },
                     entry: {
                         title: "Trip Details Form", date: "Date", pickupTime: "Pickup Time", dropTime: "Drop Time",
                         tripId: "Trip ID", tripIdPlaceholder: "Manual ID", pickup: "Pickup", pickupPlaceholder: "Pickup point",
@@ -2209,7 +2481,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         dailyTrend: "📅 દૈનિક ટ્રેન્ડ", profitAnalysis: "💸 નફા વિશ્લેષણ", weeklyReport: "📆 સાપ્તાહિક રિપોર્ટ",
                         monthlySummary: "માસિક સારાંશ", month: "મહિનો", trips: "ટ્રિપ", km: "KM"
                     },
-                    home: { subtitle: "સર્વશ્રેષ્ઠ ટ્રિપ મેનેજમેન્ટ સિસ્ટમ", startEntry: "નવી એન્ટ્રી શરૂ કરો ➔", welcome: "સ્વાગત છે કમલેશ ભાઈ" },
+                    home: { subtitle: "સર્વશ્રેષ્ઠ ટ્રિપ મેનેજમેન્ટ સિસ્ટમ", startEntry: "નવી એન્ટ્રી શરૂ કરો ➔", welcome: "સ્વાગત છે કમલેશ" },
                     entry: {
                         title: "ટ્રિપની વિગત ભરો", date: "તારીખ", pickupTime: "પિકઅપ સમય", dropTime: "ડ્રોપ સમય",
                         tripId: "ટ્રિપ ID", tripIdPlaceholder: "મેન્યુઅલ ID", pickup: "પિકઅપ", pickupPlaceholder: "પિકઅપ પોઈન્ટ",
@@ -2284,7 +2556,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         dailyTrend: "📅 दैनिक ट्रेंड", profitAnalysis: "💸 लाभ विश्लेषण", weeklyReport: "📆 साप्ताहिक रिपोर्ट",
                         monthlySummary: "मासिक सारांश", month: "महीना", trips: "ट्रिप", km: "KM"
                     },
-                    home: { subtitle: "सर्वश्रेष्ठ ट्रिप मैनेजमेंट सिस्टम", startEntry: "नई एंट्री शुरू करें ➔", welcome: "स्वागत है कमलेश भाई" },
+                    home: { subtitle: "सर्वश्रेष्ठ ट्रिप मैनेजमेंट सिस्टम", startEntry: "नई एंट्री शुरू करें ➔", welcome: "स्वागत है कमलेश" },
                     entry: {
                         title: "ट्रिप विवरण भरें", date: "तारीख", pickupTime: "पिकअप समय", dropTime: "ड्रॉप समय",
                         tripId: "ट्रिप ID", tripIdPlaceholder: "मैनुअल ID", pickup: "पिकअप", pickupPlaceholder: "पिकअप पॉइंट",
@@ -2486,7 +2758,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             appInitialized = true;
             window.appSettings = {
                 rate: 21,
-                companyName: 'Tripset',
+                companyName: String(window.currentUserDisplayName || 'Kamlesh'),
                 darkMode: 'off',
                 installPromptShown: false,
                 invoiceLogoUrl: '/icon-512.png',
@@ -2602,6 +2874,8 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     window.location.href = '/login';
                     return;
                 }
+                setAuthenticatedIdentity(s);
+                applyTranslations();
                 console.log('🔐 bootstrapAuth: Authenticated, unlocking app');
                 window.unlockScreen();
             } catch (e) {
@@ -2826,12 +3100,13 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
         }
 
-        function showInstallPromptIfNeeded() {
-            if (window.appSettings && window.appSettings.installPromptShown) return;
+function showInstallPromptIfNeeded() {
             var prompt = document.getElementById('installPrompt');
             if (!prompt || isStandaloneMode()) return;
             if (deferredPrompt || isIosDevice()) {
                 prompt.classList.add('show');
+            } else {
+                prompt.classList.remove('show');
             }
         }
 
@@ -2849,9 +3124,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         window.addEventListener('beforeinstallprompt', function(e) {
             e.preventDefault();
             deferredPrompt = e;
-            if (!(window.appSettings && window.appSettings.installPromptShown)) {
-                setTimeout(showInstallPromptIfNeeded, 3000);
-            }
+            setTimeout(showInstallPromptIfNeeded, 3000);
         });
 
         window.addEventListener('appinstalled', function() {
@@ -2866,7 +3139,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             if (!deferredPrompt) {
                 if (isIosDevice() && !isStandaloneMode()) {
                     showToast(t('toast.iosInstallGuide'), 5200);
-                    saveInstallPromptShown();
                     return;
                 }
                 showToast(t('toast.installNotAvailable'));
@@ -2874,18 +3146,19 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             }
             deferredPrompt.prompt();
             deferredPrompt.userChoice.then(function(choiceResult) {
-                if (choiceResult.outcome === 'accepted') showToast(t('toast.installingApp'));
+                if (choiceResult.outcome === 'accepted') {
+                    showToast(t('toast.installingApp'));
+                    saveInstallPromptShown();
+                }
                 deferredPrompt = null;
                 var prompt = document.getElementById('installPrompt');
                 if (prompt) prompt.classList.remove('show');
-                saveInstallPromptShown();
             });
         });
 
         window.dismissInstallPrompt = function() {
             var prompt = document.getElementById('installPrompt');
             if (prompt) prompt.classList.remove('show');
-            saveInstallPromptShown();
         };
 
         // Auth + PIN bootstrap flow
@@ -2938,10 +3211,13 @@ let weeklyChartInstance = null;
 
 // Enhanced Service Worker Registration
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
+
+if ('serviceWorker' in navigator && (window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    var swUrl = '/sw.js?v=${PWA_ASSET_VERSION}';
+    navigator.serviceWorker.register(swUrl, { scope: '/' })
         .then(function(registration) {
             console.log("SW Registered ✅");
+            registration.update();
             
             // Check for updates periodically
             setInterval(function() {
@@ -3215,7 +3491,7 @@ window.loadSettings = async function() {
         const s = await res.json();
         window.appSettings = {
             rate: Number(s.rate) || 21,
-            companyName: String(s.companyName || 'Tripset'),
+            companyName: String(s.companyName || window.currentUserDisplayName || 'Kamlesh'),
             darkMode: String(s.darkMode || 'off'),
             installPromptShown: !!s.installPromptShown,
             invoiceLogoUrl: String(s.invoiceLogoUrl || '/icon-512.png'),
@@ -3247,7 +3523,7 @@ window.loadSettings = async function() {
         console.error('loadSettings error:', e);
         window.appSettings = window.appSettings || {
             rate: 21,
-            companyName: 'Tripset',
+            companyName: String(window.currentUserDisplayName || 'Kamlesh'),
             darkMode: 'off',
             installPromptShown: false,
             invoiceLogoUrl: '/icon-512.png',
@@ -3288,7 +3564,7 @@ window.saveSettings = async function() {
         if (!res.ok) throw new Error('Failed to save');
         const s = await res.json();
         window.appSettings.rate = Number(s.rate) || 21;
-        window.appSettings.companyName = String(s.companyName || 'Tripset');
+        window.appSettings.companyName = String(s.companyName || window.currentUserDisplayName || 'Kamlesh');
         window.appSettings.invoiceLogoUrl = String(s.invoiceLogoUrl || '/icon-512.png');
         window.appSettings.invoiceCustomerName = String(s.invoiceCustomerName || 'Walk-in Customer');
         window.appSettings.invoiceCustomerContact = String(s.invoiceCustomerContact || '');
@@ -3683,7 +3959,7 @@ window.closeEditModal = function() {
                     typingTimeout = null;
                 }
 
-                const finalText = String(text || 'Welcome Kamlashbhai');
+                const finalText = String(text || ('Welcome ' + String(window.currentUserDisplayName || 'Kamlesh')));
                 let index = 0;
                 target.textContent = '';
 
@@ -4156,7 +4432,7 @@ renderWeeklyChart(data);
                         +       '<div style="display:flex;gap:10px;align-items:flex-start;">'
                         +         logoHtml
                         +         '<div>'
-                        +           '<div style="font-size:26px;font-weight:900;letter-spacing:.02em;">Tripset</div>'
+                        +           '<div style="font-size:26px;font-weight:900;letter-spacing:.02em;">' + escapeHtml(model.companyName || 'Tripset') + '</div>'
                         +           '<div style="font-size:11px;color:#334155;text-transform:uppercase;letter-spacing:.16em;margin-top:2px;">Tax Invoice</div>'
                         +         '</div>'
                         +       '</div>'
@@ -4198,7 +4474,7 @@ renderWeeklyChart(data);
                         +       '<div style="font-size:10px;color:#475569;max-width:56%;">This invoice is computer generated and intended for accounting records.</div>'
                         +       '<div style="text-align:center;min-width:65mm;">'
                         +         '<div style="height:22mm;"></div>'
-                        +         '<div style="border-top:1px solid #0f172a;padding-top:5px;font-size:11px;font-weight:700;">Authorized Signature</div>'
+                        +         '<div style="border-top:1px solid #0f172a;padding-top:5px;font-size:11px;font-weight:700;">Authorized Signature - ' + escapeHtml(model.signatoryName || 'Kamlesh') + '</div>'
                         +       '</div>'
                         +     '</div>'
                         +   '</div>'
@@ -4240,7 +4516,7 @@ renderWeeklyChart(data);
                         : subtotal + taxAmount;
 
                     const model = {
-                        companyName: 'Tripset',
+                        companyName: String(data.companyName || (window.appSettings && window.appSettings.companyName) || window.currentUserDisplayName || 'Kamlesh'),
                         companyLogoUrl: String(data.companyLogoUrl || '/icon-512.png'),
                         invoiceNumber: String(data.invoiceNumber || ('INV-' + String(month).replace('-', '') + '-001')),
                         invoiceDate: formatDateOnly(data.invoiceDate),
@@ -4252,7 +4528,8 @@ renderWeeklyChart(data);
                         taxPercent: taxPercent,
                         taxAmount: taxAmount,
                         grandTotal: grandTotal,
-                        paymentStatus: String(data.paymentStatus || 'Pending')
+                        paymentStatus: String(data.paymentStatus || 'Pending'),
+                        signatoryName: String(window.currentUserDisplayName || 'Kamlesh')
                     };
 
                     const content = document.getElementById('invoiceContent');
@@ -4362,10 +4639,14 @@ console.log("SCRIPT END ✅");
     </body>
     
     </html>
-        `);
+        `;
+        res.send(applyAccountNameBranding(pageHtml, req.authAccount));
     });
 
-    const PORT = 3000;
-    app.listen(PORT, () => {
-        console.log(`Server chalu thai gayu che: http://localhost:${PORT} 🚀`);
-    }); 
+    const PORT = Number(process.env.PORT) || 3000;
+    if (require.main === module) {
+        app.listen(PORT, () => {
+            console.log(`Server chalu thai gayu che: http://localhost:${PORT} 🚀`);
+        });
+    }
+    module.exports = app;

@@ -1,6 +1,8 @@
-const CACHE_NAME = 'tripset-v8';
+const CACHE_NAME = 'tripset-v9';
 const urlsToCache = [
     '/',
+    '/login',
+    '/manifest.json',
     '/icon-192.png',
     '/icon-512.png',
     '/favicon.ico'
