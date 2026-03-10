@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tripset-v9';
+const CACHE_NAME = 'tripset-v10';
 const urlsToCache = [
     '/',
     '/login',

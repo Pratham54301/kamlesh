@@ -12,6 +12,7 @@ const connectMongo = require('connect-mongo');
 const mongoose = require('mongoose');
 const path = require('path');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
     const app = express();
     app.use(express.json());
@@ -61,7 +62,7 @@ function applyAccountNameBranding(html, account) {
         .replace(/\bkamlesh\b/g, lowerDisplayName);
 }
 
-const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260304';
+const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260310c';
     
     // Get MongoStore - connect-mongo v6 exports it as .default
     let MongoStore;
@@ -146,12 +147,33 @@ const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260304';
         createdAt: { type: Date, default: Date.now }
     });
 
+    const tripInvoiceSchema = new mongoose.Schema(
+        {
+            tripId: { type: String, default: '' },
+            tripDbId: { type: String, default: '' },
+            userKey: { type: String, default: '' },
+            invoiceMonth: { type: String, default: '' },
+            companyName: { type: String, default: '' },
+            vehicleNumber: { type: String, default: '' },
+            route: { type: String, default: '' },
+            invoiceNumber: { type: String, default: '' },
+            date: { type: String, default: '' },
+            total: { type: Number, default: 0 },
+            pdfPath: { type: String, default: '' },
+            pdfReady: { type: Boolean, default: false },
+            createdAt: { type: Date, default: Date.now },
+            updatedAt: { type: Date, default: Date.now }
+        },
+        { collection: 'tripset_trip_invoices', versionKey: false }
+    );
+
     // App settings (stored in MongoDB only - no localStorage)
     const appSettingsSchema = new mongoose.Schema(
         {
             key: { type: String, unique: true, required: true },
             companyName: { type: String, default: 'Tripset' },
             rate: { type: Number, default: 21 },
+            language: { type: String, default: 'en' },
             darkMode: { type: String, default: 'off', enum: ['on', 'off'] },
             installPromptShown: { type: Boolean, default: false },
             invoiceLogoUrl: { type: String, default: '/icon-512.png' },
@@ -167,21 +189,246 @@ const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260304';
         { collection: 'tripset_settings', versionKey: false }
     );
 
-const pinStateSchema = new mongoose.Schema(
+const userProfileSchema = new mongoose.Schema(
     {
         key: { type: String, unique: true, required: true },
-        pinHash: { type: String, default: '' },
+        name: { type: String, required: true },
+        mobileNumber: { type: String, required: true },
+        vehicleNumber: { type: String, required: true },
+        email: { type: String, required: true },
         updatedAt: { type: Date, default: Date.now }
     },
-    { collection: 'tripset_pin_state', versionKey: false }
+    { collection: 'tripset_user_profile', versionKey: false }
 );
 
-const DEFAULT_PIN = '6287';
+const signupUserSchema = new mongoose.Schema(
+    {
+        userKey: { type: String, unique: true, required: true },
+        name: { type: String, required: true },
+        mobileNumber: { type: String, unique: true, required: true },
+        vehicleNumber: { type: String, required: true },
+        email: { type: String, unique: true, required: true },
+        passwordHash: { type: String, required: true },
+        dbFolder: { type: String, required: true },
+        dbName: { type: String, required: true },
+        isActive: { type: Boolean, default: true },
+        isBlocked: { type: Boolean, default: false },
+        blockedAt: { type: Date, default: null }
+    },
+    {
+        collection: 'tripset_users',
+        versionKey: false,
+        timestamps: true
+    }
+);
+
+const SignupUser = mongoose.models.SignupUser || mongoose.model('SignupUser', signupUserSchema);
+const adminActivitySchema = new mongoose.Schema(
+    {
+        type: { type: String, required: true },
+        actor: { type: String, default: '' },
+        targetUserKey: { type: String, default: '' },
+        message: { type: String, default: '' },
+        meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+        createdAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_admin_activity', versionKey: false }
+);
+const AdminActivity = mongoose.models.AdminActivity || mongoose.model('AdminActivity', adminActivitySchema);
+const adminAnnouncementSchema = new mongoose.Schema(
+    {
+        title: { type: String, default: '' },
+        message: { type: String, required: true },
+        defaultLanguage: { type: String, default: 'en' },
+        translations: { type: mongoose.Schema.Types.Mixed, default: {} },
+        targetType: { type: String, default: 'all' },
+        targetUserKeys: { type: [String], default: [] },
+        targetCompanyNames: { type: [String], default: [] },
+        startsAt: { type: Date, default: Date.now },
+        expiresAt: { type: Date, default: null },
+        status: { type: String, default: 'active' },
+        isActive: { type: Boolean, default: true },
+        createdAt: { type: Date, default: Date.now },
+        updatedAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_admin_announcements', versionKey: false }
+);
+const AdminAnnouncement = mongoose.models.AdminAnnouncement || mongoose.model('AdminAnnouncement', adminAnnouncementSchema);
+const adminFeatureSchema = new mongoose.Schema(
+    {
+        key: { type: String, unique: true, required: true },
+        signupEnabled: { type: Boolean, default: true },
+        pdfEnabled: { type: Boolean, default: true },
+        excelEnabled: { type: Boolean, default: true },
+        maintenanceEnabled: { type: Boolean, default: false },
+        updatedAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_admin_features', versionKey: false }
+);
+const AdminFeature = mongoose.models.AdminFeature || mongoose.model('AdminFeature', adminFeatureSchema);
+const adminNotificationSchema = new mongoose.Schema(
+    {
+        type: { type: String, required: true },
+        title: { type: String, default: '' },
+        message: { type: String, default: '' },
+        meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+        isRead: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_admin_notifications', versionKey: false }
+);
+const AdminNotification = mongoose.models.AdminNotification || mongoose.model('AdminNotification', adminNotificationSchema);
+const systemErrorSchema = new mongoose.Schema(
+    {
+        level: { type: String, default: 'error' },
+        source: { type: String, default: '' },
+        message: { type: String, default: '' },
+        stack: { type: String, default: '' },
+        meta: { type: mongoose.Schema.Types.Mixed, default: {} },
+        createdAt: { type: Date, default: Date.now }
+    },
+    { collection: 'tripset_system_errors', versionKey: false }
+);
+const SystemErrorLog = mongoose.models.SystemErrorLog || mongoose.model('SystemErrorLog', systemErrorSchema);
+
+const SIGNUP_PASSWORD_SALT_ROUNDS = Math.max(8, Number(process.env.SIGNUP_PASSWORD_SALT_ROUNDS) || 10);
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'Admin@giftcity').trim();
+const ADMIN_PASSWORD_HASH = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
 const dbContextCache = new Map();
 const legacyMigrationCache = new Map();
+const ACCOUNT_BY_USERNAME = new Map(AUTH_ACCOUNTS.map((account) => [account.username, account]));
+const SUPPORTED_APP_LANGUAGES = ['en', 'gu', 'hi'];
 
-function findAccountByCredentials(username, password) {
-    return AUTH_ACCOUNTS.find((account) => account.username === username && account.password === password) || null;
+function normalizeDigitString(value) {
+    const raw = String(value == null ? '' : value).trim();
+    let out = '';
+    for (const ch of raw) {
+        const cp = ch.codePointAt(0);
+        if (cp >= 48 && cp <= 57) { out += ch; continue; } // 0-9
+        if (cp >= 0x0660 && cp <= 0x0669) { out += String(cp - 0x0660); continue; } // Arabic-Indic
+        if (cp >= 0x06F0 && cp <= 0x06F9) { out += String(cp - 0x06F0); continue; } // Extended Arabic-Indic
+        if (cp >= 0x0966 && cp <= 0x096F) { out += String(cp - 0x0966); continue; } // Devanagari
+        if (cp >= 0x09E6 && cp <= 0x09EF) { out += String(cp - 0x09E6); continue; } // Bengali
+        if (cp >= 0x0AE6 && cp <= 0x0AEF) { out += String(cp - 0x0AE6); continue; } // Gujarati
+        if (cp >= 0xFF10 && cp <= 0xFF19) { out += String(cp - 0xFF10); continue; } // Full-width
+    }
+    return out;
+}
+
+function normalizePersonName(name) {
+    return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
+
+function normalizeMobileNumber(mobileNumber) {
+    const digits = normalizeDigitString(mobileNumber);
+    if (digits.length === 12 && digits.startsWith('91')) {
+        return digits.slice(2);
+    }
+    return digits;
+}
+
+function normalizeVehicleNumber(vehicleNumber) {
+    return String(vehicleNumber || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
+function normalizeLanguageCode(language) {
+    const code = String(language || '').trim().toLowerCase();
+    return SUPPORTED_APP_LANGUAGES.includes(code) ? code : 'en';
+}
+
+function normalizeCompanyToken(name) {
+    return String(name || '').trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizeEmail(email));
+}
+
+function isValidMobileNumber(mobileNumber) {
+    return /^\d{10}$/.test(normalizeMobileNumber(mobileNumber));
+}
+
+function isValidVehicleNumber(vehicleNumber) {
+    return /^[A-Z0-9-]{6,20}$/.test(normalizeVehicleNumber(vehicleNumber));
+}
+
+function makeSafeToken(input, fallback) {
+    const token = String(input || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 24);
+    return token || fallback;
+}
+
+function buildUserStorageInfo(name, mobileNumber) {
+    const nameToken = makeSafeToken(name, 'user');
+    const mobileToken = normalizeMobileNumber(mobileNumber).slice(-10);
+    const randomToken = crypto.randomBytes(4).toString('hex');
+    return {
+        userKey: (`user_${nameToken}_${mobileToken}_${randomToken}`).slice(0, 63),
+        dbFolder: (`${nameToken}_${mobileToken.slice(-4)}`).slice(0, 32),
+        dbName: (`tripset_${nameToken}_${mobileToken}_${randomToken}`).slice(0, 63)
+    };
+}
+
+function getSignupAccountFromSession(req) {
+    const session = req && req.session ? req.session : null;
+    if (!session || !session.isDynamicUser) return null;
+
+    const userKey = String(session.authUserKey || '').trim();
+    const username = String(session.authUsername || '').trim();
+    const displayName = normalizePersonName(session.displayName || '');
+    const dbFolder = String(session.dbFolder || '').trim();
+    const dbName = String(session.dbName || '').trim();
+
+    if (!userKey || !username || !displayName || !dbFolder || !dbName) return null;
+
+    return {
+        userKey,
+        username,
+        displayName,
+        dbFolder,
+        dbName,
+        legacyDbName: '',
+        isDynamicUser: true
+    };
+}
+
+function getAccountFromSignupUser(userDoc) {
+    if (!userDoc) return null;
+    return {
+        userKey: String(userDoc.userKey || '').trim(),
+        username: String(userDoc.mobileNumber || '').trim(),
+        displayName: normalizePersonName(userDoc.name || ''),
+        dbFolder: String(userDoc.dbFolder || '').trim(),
+        dbName: String(userDoc.dbName || '').trim(),
+        legacyDbName: '',
+        isDynamicUser: true
+    };
+}
+
+function findDefaultAccountByUsername(username) {
+    const key = String(username || '').trim();
+    return ACCOUNT_BY_USERNAME.get(key) || null;
+}
+
+function findDefaultAccountByCredentials(username, password) {
+    const account = findDefaultAccountByUsername(username);
+    if (!account) return null;
+    return account.password === String(password || '').trim() ? account : null;
+}
+
+function isDefaultAccount(account) {
+    if (!account) return false;
+    return ACCOUNT_BY_KEY.has(String(account.userKey || '').trim());
 }
 
 function setSessionAccount(req, account) {
@@ -191,6 +438,18 @@ function setSessionAccount(req, account) {
     req.session.displayName = getAccountDisplayName(account);
     req.session.dbFolder = account.dbFolder;
     req.session.dbName = account.dbName;
+    req.session.isDynamicUser = !!account.isDynamicUser;
+}
+
+function clearSessionAccount(req) {
+    if (!req || !req.session) return;
+    req.session.isAuthenticated = false;
+    req.session.authUserKey = '';
+    req.session.authUsername = '';
+    req.session.displayName = '';
+    req.session.dbFolder = '';
+    req.session.dbName = '';
+    req.session.isDynamicUser = false;
 }
 
 function resolveSessionAccount(req) {
@@ -199,17 +458,981 @@ function resolveSessionAccount(req) {
     const sessionKey = String(req.session.authUserKey || '').trim();
     const sessionUsername = String(req.session.authUsername || '').trim();
     let account = ACCOUNT_BY_KEY.get(sessionKey) || null;
+    if (!account) account = getSignupAccountFromSession(req);
+    if (!account) account = findDefaultAccountByUsername(sessionUsername);
+
     if (!account) {
-        account = AUTH_ACCOUNTS.find((item) => item.username === sessionUsername) || DEFAULT_ACCOUNT;
+        clearSessionAccount(req);
+        return null;
+    }
+    setSessionAccount(req, account);
+    return account;
+}
+
+async function findActiveSignupUserByMobile(mobileNumber) {
+    const mobile = normalizeMobileNumber(mobileNumber);
+    if (!isValidMobileNumber(mobile)) return null;
+    return SignupUser.findOne({ mobileNumber: mobile, isActive: true });
+}
+
+function validateSignupPayload(payload) {
+    const name = normalizePersonName(payload && payload.name);
+    const mobileNumber = normalizeMobileNumber(payload && payload.mobileNumber);
+    const vehicleNumber = normalizeVehicleNumber(payload && payload.vehicleNumber);
+    const email = normalizeEmail(payload && payload.email);
+    const password = String((payload && payload.password) || '').trim();
+    const confirmPassword = String((payload && payload.confirmPassword) || '').trim();
+
+    if (!name || !mobileNumber || !vehicleNumber || !email || !password || !confirmPassword) {
+        return { error: 'All fields are required' };
+    }
+    if (name.length < 2 || name.length > 60) {
+        return { error: 'Name must be between 2 and 60 characters' };
+    }
+    if (!isValidMobileNumber(mobileNumber)) {
+        return { error: 'Mobile number must be exactly 10 digits' };
+    }
+    if (!isValidVehicleNumber(vehicleNumber)) {
+        return { error: 'Vehicle number is invalid' };
+    }
+    if (!isValidEmail(email)) {
+        return { error: 'Email ID is invalid' };
+    }
+    if (password.length < 6) {
+        return { error: 'Password must be at least 6 characters' };
+    }
+    if (password !== confirmPassword) {
+        return { error: 'Password and confirm password do not match' };
+    }
+    if (findDefaultAccountByUsername(mobileNumber)) {
+        return { error: 'This mobile number is already reserved. Please use login.' };
     }
 
-    if (!account) return null;
-    req.session.authUserKey = account.userKey;
-    req.session.authUsername = account.username;
-    req.session.displayName = getAccountDisplayName(account);
-    req.session.dbFolder = account.dbFolder;
-    req.session.dbName = account.dbName;
-    return account;
+    return {
+        value: {
+            name,
+            mobileNumber,
+            vehicleNumber,
+            email,
+            password
+        }
+    };
+}
+
+function getSignupConflictMessage(err) {
+    if (!err || err.code !== 11000) return '';
+    const keys = Object.keys(err.keyPattern || err.keyValue || {});
+    if (!keys.length) return 'Account already exists';
+    if (keys[0] === 'mobileNumber') return 'This mobile number is already registered';
+    if (keys[0] === 'email') return 'This email ID is already registered';
+    if (keys[0] === 'userKey') return 'Unable to create account. Please try again';
+    return 'Account already exists';
+}
+
+function resolveAdminSession(req) {
+    if (!req || !req.session) return null;
+    if (!req.session.adminAuthenticated) return null;
+    const username = String(req.session.adminUsername || '').trim();
+    if (!username || username !== ADMIN_USERNAME) return null;
+    return { username };
+}
+
+function setAdminSession(req) {
+    if (!req || !req.session) return;
+    req.session.adminAuthenticated = true;
+    req.session.adminUsername = ADMIN_USERNAME;
+}
+
+function clearAdminSession(req) {
+    if (!req || !req.session) return;
+    req.session.adminAuthenticated = false;
+    req.session.adminUsername = '';
+}
+
+async function validateAdminCredentials(username, password) {
+    const normalizedUser = String(username || '').trim();
+    const normalizedPass = String(password || '').trim();
+    if (!normalizedUser || !normalizedPass) return false;
+    if (normalizedUser !== ADMIN_USERNAME) return false;
+    if (ADMIN_PASSWORD_HASH) {
+        try {
+            return await bcrypt.compare(normalizedPass, ADMIN_PASSWORD_HASH);
+        } catch (err) {
+            return false;
+        }
+    }
+    return normalizedPass === ADMIN_PASSWORD;
+}
+
+async function recordAdminActivity(event) {
+    try {
+        const payload = event || {};
+        await AdminActivity.create({
+            type: String(payload.type || 'system_event'),
+            actor: String(payload.actor || 'system'),
+            targetUserKey: String(payload.targetUserKey || ''),
+            message: String(payload.message || ''),
+            meta: payload.meta || {},
+            createdAt: new Date()
+        });
+    } catch (err) {
+        console.warn('Admin activity logging warning:', err.message);
+    }
+}
+
+const DEFAULT_ADMIN_FEATURE_FLAGS = Object.freeze({
+    signupEnabled: true,
+    pdfEnabled: true,
+    excelEnabled: true,
+    maintenanceEnabled: false
+});
+
+async function getAdminFeatureFlags() {
+    let doc = await AdminFeature.findOne({ key: 'singleton' }).lean();
+    if (!doc) {
+        doc = await AdminFeature.create({
+            key: 'singleton',
+            signupEnabled: true,
+            pdfEnabled: true,
+            excelEnabled: true,
+            maintenanceEnabled: false,
+            updatedAt: new Date()
+        });
+        doc = doc.toObject ? doc.toObject() : doc;
+    }
+    return {
+        signupEnabled: doc.signupEnabled !== false,
+        pdfEnabled: doc.pdfEnabled !== false,
+        excelEnabled: doc.excelEnabled !== false,
+        maintenanceEnabled: doc.maintenanceEnabled === true,
+        updatedAt: doc.updatedAt || null
+    };
+}
+
+async function updateAdminFeatureFlags(input) {
+    const payload = input || {};
+    const nextFlags = {
+        signupEnabled: payload.signupEnabled !== false,
+        pdfEnabled: payload.pdfEnabled !== false,
+        excelEnabled: payload.excelEnabled !== false,
+        maintenanceEnabled: payload.maintenanceEnabled === true
+    };
+    await AdminFeature.updateOne(
+        { key: 'singleton' },
+        {
+            key: 'singleton',
+            signupEnabled: nextFlags.signupEnabled,
+            pdfEnabled: nextFlags.pdfEnabled,
+            excelEnabled: nextFlags.excelEnabled,
+            maintenanceEnabled: nextFlags.maintenanceEnabled,
+            updatedAt: new Date()
+        },
+        { upsert: true }
+    );
+    return nextFlags;
+}
+
+async function isMaintenanceModeEnabled() {
+    const flags = await getAdminFeatureFlags();
+    return flags.maintenanceEnabled === true;
+}
+
+function isAnnouncementCurrentlyActive(item, now) {
+    const row = item || {};
+    const current = now instanceof Date ? now : new Date();
+    if (row.isActive === false) return false;
+    if (String(row.status || 'active').trim().toLowerCase() === 'expired') return false;
+    const startsAt = row.startsAt ? new Date(row.startsAt) : null;
+    const expiresAt = row.expiresAt ? new Date(row.expiresAt) : null;
+    if (startsAt && !Number.isNaN(startsAt.getTime()) && startsAt.getTime() > current.getTime()) return false;
+    if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < current.getTime()) return false;
+    return true;
+}
+
+function getLocalizedAnnouncementContent(item, language) {
+    const lang = normalizeLanguageCode(language);
+    const defaultLanguage = normalizeLanguageCode(item && item.defaultLanguage);
+    const translations = (item && item.translations && typeof item.translations === 'object') ? item.translations : {};
+    const defaultEntry = translations[defaultLanguage] && typeof translations[defaultLanguage] === 'object' ? translations[defaultLanguage] : {};
+    const selectedEntry = translations[lang] && typeof translations[lang] === 'object' ? translations[lang] : {};
+    return {
+        language: lang,
+        title: String(selectedEntry.title || defaultEntry.title || item.title || '').trim(),
+        message: String(selectedEntry.message || defaultEntry.message || item.message || '').trim()
+    };
+}
+
+function announcementMatchesTarget(item, userKey, companyName) {
+    const targetType = String((item && item.targetType) || 'all').trim().toLowerCase() || 'all';
+    if (targetType === 'selected_users') {
+        const allowedUsers = Array.isArray(item && item.targetUserKeys) ? item.targetUserKeys.map((value) => String(value || '').trim()) : [];
+        return allowedUsers.includes(String(userKey || '').trim());
+    }
+    if (targetType === 'selected_company_users') {
+        const allowedCompanies = Array.isArray(item && item.targetCompanyNames)
+            ? item.targetCompanyNames.map((value) => normalizeCompanyToken(value))
+            : [];
+        return allowedCompanies.includes(normalizeCompanyToken(companyName));
+    }
+    return true;
+}
+
+async function getAdminAnnouncements(includeInactive, limit) {
+    const query = includeInactive ? {} : { isActive: true };
+    const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
+    let items = await AdminAnnouncement.find(query).sort({ createdAt: -1 }).limit(includeInactive ? safeLimit : safeLimit * 3).lean();
+    if (!includeInactive) {
+        const now = new Date();
+        items = items.filter((item) => isAnnouncementCurrentlyActive(item, now));
+    }
+    return items.slice(0, safeLimit);
+}
+
+async function getAnnouncementsForAccount(account, language, limit) {
+    const safeAccount = account || null;
+    if (!safeAccount) return [];
+    const context = getDbContextByName(safeAccount.dbName);
+    await ensureLegacyDataMigrated(safeAccount, context);
+    const settings = await getSettings(context.AppSettings, safeAccount);
+    const userLanguage = normalizeLanguageCode(language || settings.language || 'en');
+    const companyName = String((settings && settings.companyName) || getAccountDisplayName(safeAccount)).trim();
+    const items = await getAdminAnnouncements(false, Math.max(10, Number(limit) || 10));
+    return items
+        .filter((item) => announcementMatchesTarget(item, safeAccount.userKey, companyName))
+        .map((item) => {
+            const localized = getLocalizedAnnouncementContent(item, userLanguage);
+            return {
+                _id: String(item && item._id ? item._id : ''),
+                title: localized.title,
+                message: localized.message,
+                language: localized.language,
+                defaultLanguage: normalizeLanguageCode(item && item.defaultLanguage),
+                targetType: String((item && item.targetType) || 'all'),
+                status: String((item && item.status) || 'active'),
+                createdAt: item && item.createdAt ? item.createdAt : null,
+                updatedAt: item && item.updatedAt ? item.updatedAt : null,
+                startsAt: item && item.startsAt ? item.startsAt : null,
+                expiresAt: item && item.expiresAt ? item.expiresAt : null
+            };
+        });
+}
+
+function buildAdminAnnouncementPayload(body) {
+    const input = body || {};
+    const defaultLanguage = normalizeLanguageCode(input.language || input.defaultLanguage);
+    const translationsInput = (input.translations && typeof input.translations === 'object') ? input.translations : {};
+    const nextTranslations = {};
+    SUPPORTED_APP_LANGUAGES.forEach((lang) => {
+        const source = (translationsInput[lang] && typeof translationsInput[lang] === 'object') ? translationsInput[lang] : {};
+        const title = String(source.title || '').trim();
+        const message = String(source.message || '').trim();
+        if (title || message) {
+            nextTranslations[lang] = { title, message };
+        }
+    });
+
+    const title = String(input.title || '').trim();
+    const message = String(input.message || '').trim();
+    if (!message) {
+        throw new Error('Announcement message is required');
+    }
+    nextTranslations[defaultLanguage] = {
+        title: String((nextTranslations[defaultLanguage] && nextTranslations[defaultLanguage].title) || title || '').trim(),
+        message: String((nextTranslations[defaultLanguage] && nextTranslations[defaultLanguage].message) || message || '').trim()
+    };
+
+    const targetTypeRaw = String(input.targetType || 'all').trim().toLowerCase();
+    const targetType = ['all', 'selected_users', 'selected_company_users'].includes(targetTypeRaw) ? targetTypeRaw : 'all';
+    const targetUserKeys = Array.isArray(input.targetUserKeys)
+        ? input.targetUserKeys.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const targetCompanyNames = Array.isArray(input.targetCompanyNames)
+        ? input.targetCompanyNames.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
+    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    const parsedStartsAt = Number.isNaN(startsAt.getTime()) ? new Date() : startsAt;
+    const parsedExpiresAt = expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt : null;
+    const statusRaw = String(input.status || (input.isActive === false ? 'expired' : 'active')).trim().toLowerCase();
+    const status = statusRaw === 'expired' ? 'expired' : 'active';
+    return {
+        title,
+        message,
+        defaultLanguage,
+        translations: nextTranslations,
+        targetType,
+        targetUserKeys,
+        targetCompanyNames,
+        startsAt: parsedStartsAt,
+        expiresAt: parsedExpiresAt,
+        status,
+        isActive: input.isActive !== false && status === 'active'
+    };
+}
+
+async function recordAdminNotification(payload) {
+    try {
+        const input = payload || {};
+        await AdminNotification.create({
+            type: String(input.type || 'system'),
+            title: String(input.title || 'System Notification'),
+            message: String(input.message || ''),
+            meta: input.meta || {},
+            isRead: false,
+            createdAt: new Date()
+        });
+    } catch (err) {
+        console.warn('Admin notification logging warning:', err.message);
+    }
+}
+
+async function recordSystemError(source, error, meta, level) {
+    try {
+        const errObj = error instanceof Error ? error : new Error(String(error || 'Unknown error'));
+        const entry = await SystemErrorLog.create({
+            level: String(level || 'error'),
+            source: String(source || 'system'),
+            message: String(errObj.message || 'Unknown error'),
+            stack: String(errObj.stack || ''),
+            meta: meta || {},
+            createdAt: new Date()
+        });
+        await recordAdminNotification({
+            type: 'system_error',
+            title: 'System Error',
+            message: `${String(source || 'system')}: ${String(errObj.message || 'Unknown error')}`,
+            meta: { errorId: String(entry && entry._id ? entry._id : ''), source: String(source || 'system') }
+        });
+    } catch (logErr) {
+        console.warn('System error logging warning:', logErr.message);
+    }
+}
+
+async function maybeCreateNotificationForActivity(payload) {
+    const type = String((payload && payload.type) || '').trim();
+    if (!type) return;
+    if (type === 'new_user_registration') {
+        await recordAdminNotification({
+            type,
+            title: 'New User Registration',
+            message: String((payload && payload.message) || 'New user registered'),
+            meta: payload.meta || {}
+        });
+    } else if (type === 'company_created') {
+        await recordAdminNotification({
+            type,
+            title: 'New Company Created',
+            message: String((payload && payload.message) || 'Company created by user'),
+            meta: payload.meta || {}
+        });
+    } else if (type === 'entry_created') {
+        await recordAdminNotification({
+            type,
+            title: 'Entry Created',
+            message: String((payload && payload.message) || 'Trip entry created'),
+            meta: payload.meta || {}
+        });
+    }
+}
+
+const originalRecordAdminActivity = recordAdminActivity;
+recordAdminActivity = async function(event) {
+    const payload = event || {};
+    await originalRecordAdminActivity(payload);
+    if (!(payload && payload.meta && payload.meta.suppressNotification)) {
+        await maybeCreateNotificationForActivity(payload);
+    }
+};
+
+function getPrimaryActivityUserKey(log) {
+    if (!log) return '';
+    const actor = String(log.actor || '').trim();
+    const target = String(log.targetUserKey || '').trim();
+    if (actor && actor !== ADMIN_USERNAME && actor !== 'system' && !actor.startsWith('system:')) return actor;
+    if (target) return target;
+    return actor;
+}
+
+async function enrichAdminActivityLogs(logs) {
+    const accountRefs = await getAllAccountsForAdmin();
+    const byKey = new Map();
+    accountRefs.forEach((item) => {
+        const key = String((item.account && item.account.userKey) || '').trim();
+        if (!key) return;
+        byKey.set(key, {
+            name: item.signupUser ? String(item.signupUser.name || '').trim() : getAccountDisplayName(item.account),
+            companyName: '',
+            vehicleNumber: item.signupUser ? String(item.signupUser.vehicleNumber || '').trim() : ''
+        });
+    });
+    await Promise.all(accountRefs.map(async (item) => {
+        const key = String((item.account && item.account.userKey) || '').trim();
+        if (!key) return;
+        try {
+            const context = getDbContextByName(item.account.dbName);
+            await ensureLegacyDataMigrated(item.account, context);
+            const settings = await context.AppSettings.findOne({ key: 'singleton' }).lean();
+            const existing = byKey.get(key) || {};
+            existing.companyName = String((settings && settings.companyName) || existing.name || '').trim();
+            byKey.set(key, existing);
+        } catch (err) {}
+    }));
+    return (logs || []).map((log) => {
+        const userKey = getPrimaryActivityUserKey(log);
+        const accountMeta = byKey.get(userKey) || {};
+        return {
+            ...log,
+            userKey,
+            userName: String(accountMeta.name || userKey || ''),
+            companyName: String(accountMeta.companyName || ''),
+            vehicleNumber: String(accountMeta.vehicleNumber || '')
+        };
+    });
+}
+
+function generateTemporaryPassword() {
+    return `Trip${crypto.randomInt(100000, 999999)}`;
+}
+
+async function getCompanyOptionsForAdmin() {
+    const overviews = await Promise.all((await getAllAccountsForAdmin()).map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser)));
+    return overviews
+        .map((item) => ({
+            userKey: String(item.userKey || ''),
+            companyName: String(item.companyName || '').trim(),
+            ownerName: String(item.name || '').trim(),
+            vehicleNumber: String(item.vehicleNumber || '').trim()
+        }))
+        .filter((item) => !!item.companyName)
+        .sort((a, b) => String(a.companyName).localeCompare(String(b.companyName)));
+}
+
+async function buildAdminStorageUsage(limit) {
+    const safeLimit = Math.min(100, Math.max(10, Number(limit) || 50));
+    const accountRefs = await getAllAccountsForAdmin();
+    const rows = [];
+    for (const ref of accountRefs) {
+        const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        let approxBytes = 0;
+        try {
+            const stats = await context.db.db.stats();
+            approxBytes = Number(stats && stats.dataSize ? stats.dataSize : 0);
+        } catch (err) {
+            const [trips, settings, profile, tripInvoices] = await Promise.all([
+                context.Trip.countDocuments(),
+                context.AppSettings.countDocuments(),
+                context.UserProfile.countDocuments(),
+                context.TripInvoice.countDocuments()
+            ]);
+            approxBytes = Number((trips * 1400) + (settings * 1800) + (profile * 900) + (tripInvoices * 650));
+        }
+        rows.push({
+            userKey: overview.userKey,
+            name: overview.name,
+            companyName: overview.companyName,
+            vehicleNumber: overview.vehicleNumber,
+            totalEntries: overview.totalEntries,
+            approxBytes
+        });
+    }
+    return rows.sort((a, b) => Number(b.approxBytes || 0) - Number(a.approxBytes || 0)).slice(0, safeLimit);
+}
+
+async function buildVehiclePerformanceStats(limit) {
+    const safeLimit = Math.min(100, Math.max(5, Number(limit) || 25));
+    const accountRefs = await getAllAccountsForAdmin();
+    const rows = [];
+    for (const ref of accountRefs) {
+        const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        const trips = await context.Trip.find().lean();
+        const totalKm = trips.reduce((sum, trip) => sum + Number(trip && trip.km ? trip.km : 0), 0);
+        const totalRevenue = trips.reduce((sum, trip) => sum + Number(trip && trip.total ? trip.total : 0), 0);
+        const totalProfit = trips.reduce((sum, trip) => sum + (Number(trip && trip.total ? trip.total : 0) - Number(trip && trip.cng ? trip.cng : 0) - Number(trip && trip.otherExpense ? trip.otherExpense : 0)), 0);
+        rows.push({
+            userKey: overview.userKey,
+            userName: overview.name,
+            vehicleNumber: overview.vehicleNumber,
+            companyName: overview.companyName,
+            totalTrips: trips.length,
+            totalKm,
+            totalRevenue,
+            totalProfit
+        });
+    }
+    return rows
+        .filter((item) => !!String(item.vehicleNumber || '').trim())
+        .sort((a, b) => Number(b.totalProfit || 0) - Number(a.totalProfit || 0))
+        .slice(0, safeLimit);
+}
+
+async function buildRouteAnalytics(limit) {
+    const safeLimit = Math.min(100, Math.max(5, Number(limit) || 25));
+    const accountRefs = await getAllAccountsForAdmin();
+    const routeMap = new Map();
+    for (const ref of accountRefs) {
+        const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        const trips = await context.Trip.find().lean();
+        trips.forEach((trip) => {
+            const route = [String(trip && trip.pickup || '').trim(), String(trip && trip.drop || '').trim()].filter(Boolean).join(' -> ') || 'Unknown Route';
+            const current = routeMap.get(route) || {
+                route,
+                totalTrips: 0,
+                totalRevenue: 0,
+                totalKm: 0,
+                users: new Set(),
+                companies: new Set()
+            };
+            current.totalTrips += 1;
+            current.totalRevenue += Number(trip && trip.total ? trip.total : 0);
+            current.totalKm += Number(trip && trip.km ? trip.km : 0);
+            current.users.add(String(overview.userKey || ''));
+            current.companies.add(String(overview.companyName || ''));
+            routeMap.set(route, current);
+        });
+    }
+    return Array.from(routeMap.values())
+        .map((item) => ({
+            route: item.route,
+            totalTrips: item.totalTrips,
+            totalRevenue: item.totalRevenue,
+            totalKm: item.totalKm,
+            totalUsers: item.users.size,
+            totalCompanies: item.companies.size
+        }))
+        .sort((a, b) => Number(b.totalTrips || 0) - Number(a.totalTrips || 0))
+        .slice(0, safeLimit);
+}
+
+async function buildProfitAnalytics() {
+    const accountRefs = await getAllAccountsForAdmin();
+    const monthlyMap = new Map();
+    const companyMap = new Map();
+    const userMap = new Map();
+    let overallProfit = 0;
+    let overallRevenue = 0;
+    let totalTrips = 0;
+    for (const ref of accountRefs) {
+        const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        const trips = await context.Trip.find().lean();
+        trips.forEach((trip) => {
+            const revenue = Number(trip && trip.total ? trip.total : 0);
+            const cng = Number(trip && trip.cng ? trip.cng : 0);
+            const otherExpense = Number(trip && trip.otherExpense ? trip.otherExpense : 0);
+            const profit = revenue - cng - otherExpense;
+            overallProfit += profit;
+            overallRevenue += revenue;
+            totalTrips += 1;
+            const createdAt = trip && trip.createdAt ? new Date(trip.createdAt) : null;
+            const monthKey = createdAt && !Number.isNaN(createdAt.getTime())
+                ? `${createdAt.getUTCFullYear()}-${String(createdAt.getUTCMonth() + 1).padStart(2, '0')}`
+                : 'Unknown';
+            monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + profit);
+            companyMap.set(overview.companyName, (companyMap.get(overview.companyName) || 0) + profit);
+            const existingUser = userMap.get(overview.userKey) || { userKey: overview.userKey, userName: overview.name, totalTrips: 0, totalProfit: 0 };
+            existingUser.totalTrips += 1;
+            existingUser.totalProfit += profit;
+            userMap.set(overview.userKey, existingUser);
+        });
+    }
+    return {
+        overallProfit,
+        overallRevenue,
+        totalTrips,
+        averageProfitPerTrip: totalTrips ? overallProfit / totalTrips : 0,
+        monthlyProfit: Array.from(monthlyMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([month, profit]) => ({ month, profit })),
+        companyProfit: Array.from(companyMap.entries()).map(([companyName, profit]) => ({ companyName, profit })).sort((a, b) => b.profit - a.profit).slice(0, 20),
+        leaderboard: Array.from(userMap.values()).sort((a, b) => Number(b.totalProfit || 0) - Number(a.totalProfit || 0)).slice(0, 20)
+    };
+}
+
+async function buildSystemInsights() {
+    const accountRefs = await getAllAccountsForAdmin();
+    const hourMap = new Map();
+    const routeRows = await buildRouteAnalytics(10);
+    let mostActiveUser = null;
+    let mostActiveCompany = null;
+    const overviews = [];
+    for (const ref of accountRefs) {
+        const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+        overviews.push(overview);
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        const trips = await context.Trip.find().lean();
+        trips.forEach((trip) => {
+            const createdAt = trip && trip.createdAt ? new Date(trip.createdAt) : null;
+            if (createdAt && !Number.isNaN(createdAt.getTime())) {
+                const hourKey = String(createdAt.getHours()).padStart(2, '0');
+                hourMap.set(hourKey, (hourMap.get(hourKey) || 0) + 1);
+            }
+        });
+    }
+    const rankedUsers = overviews.slice().sort((a, b) => Number(b.totalEntries || 0) - Number(a.totalEntries || 0));
+    if (rankedUsers.length) mostActiveUser = { userKey: rankedUsers[0].userKey, name: rankedUsers[0].name, totalTrips: rankedUsers[0].totalTrips };
+    const rankedCompanies = overviews.slice().sort((a, b) => Number(b.totalEntries || 0) - Number(a.totalEntries || 0));
+    if (rankedCompanies.length) mostActiveCompany = { companyName: rankedCompanies[0].companyName, totalTrips: rankedCompanies[0].totalTrips };
+    const peakTripHours = Array.from(hourMap.entries()).map(([hour, count]) => ({ hour, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+    return {
+        peakTripHours,
+        mostActiveUser,
+        mostActiveCompany,
+        mostUsedRoute: routeRows[0] || null,
+        mostActiveUsers: rankedUsers.slice(0, 5).map((item) => ({ userKey: item.userKey, name: item.name, totalTrips: item.totalTrips }))
+    };
+}
+
+function detectSmartTripAlerts(trip, overview) {
+    const alerts = [];
+    const revenue = Number(trip && trip.total ? trip.total : 0);
+    const profit = revenue - Number(trip && trip.cng ? trip.cng : 0) - Number(trip && trip.otherExpense ? trip.otherExpense : 0);
+    const km = Number(trip && trip.km ? trip.km : 0);
+    if (profit < 50) {
+        alerts.push({ title: 'Very Low Profit Trip', message: `Low profit detected for ${String(trip && trip.tripId || 'trip')}`, meta: { profit, tripId: String(trip && trip.tripId || ''), userKey: String(overview && overview.userKey || '') } });
+    }
+    if (km <= 0 || km > 1000) {
+        alerts.push({ title: 'Invalid Kilometer Entry', message: `Suspicious KM value detected for ${String(trip && trip.tripId || 'trip')}`, meta: { km, tripId: String(trip && trip.tripId || ''), userKey: String(overview && overview.userKey || '') } });
+    }
+    return alerts;
+}
+
+function toInvoiceMonthValue(dateLike) {
+    const dt = dateLike instanceof Date ? dateLike : new Date(dateLike);
+    if (Number.isNaN(dt.getTime())) return new Date().toISOString().slice(0, 7);
+    return dt.toISOString().slice(0, 7);
+}
+
+function getTripInvoiceMonth(trip) {
+    const rawDate = String((trip && trip.date) || '').trim();
+    if (/^\d{4}-\d{2}/.test(rawDate)) {
+        return rawDate.slice(0, 7);
+    }
+    const dayFirstMatch = rawDate.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if (dayFirstMatch) {
+        return `${dayFirstMatch[3]}-${String(dayFirstMatch[2]).padStart(2, '0')}`;
+    }
+    return toInvoiceMonthValue(trip && trip.createdAt ? trip.createdAt : Date.now());
+}
+
+function buildTripRouteLabel(trip) {
+    const pickup = String((trip && trip.pickup) || '').trim();
+    const drop = String((trip && trip.drop) || '').trim();
+    return [pickup, drop].filter(Boolean).join(' -> ') || 'Trip Service';
+}
+
+function buildTripInvoiceNumber(invoiceMonth, trip) {
+    const monthToken = String(invoiceMonth || '').replace(/[^0-9]/g, '').slice(0, 6) || new Date().toISOString().slice(0, 7).replace('-', '');
+    const tripToken = makeSafeToken(String((trip && (trip.tripId || trip._id)) || 'trip'), 'trip')
+        .replace(/_/g, '')
+        .toUpperCase()
+        .slice(-8) || 'TRIP';
+    return `INV-${monthToken}-${tripToken}`;
+}
+
+async function upsertTripInvoiceRecord(context, account, settings, trip, overview) {
+    if (!context || !context.TripInvoice || !trip) return null;
+    const invoiceMonth = getTripInvoiceMonth(trip);
+    const tripDbId = String((trip && trip._id) || '').trim();
+    const createdAt = (trip && trip.createdAt) ? new Date(trip.createdAt) : new Date();
+    const fallbackDate = Number.isNaN(createdAt.getTime()) ? new Date().toISOString().slice(0, 10) : createdAt.toISOString().slice(0, 10);
+    const payload = {
+        tripId: String((trip && trip.tripId) || '').trim() || tripDbId,
+        tripDbId,
+        userKey: String((account && account.userKey) || '').trim(),
+        invoiceMonth,
+        companyName: String((settings && settings.companyName) || (overview && overview.companyName) || getAccountDisplayName(account)).trim(),
+        vehicleNumber: String((overview && overview.vehicleNumber) || '').trim(),
+        route: buildTripRouteLabel(trip),
+        invoiceNumber: buildTripInvoiceNumber(invoiceMonth, trip),
+        date: String((trip && trip.date) || '').trim() || fallbackDate,
+        total: Number((trip && trip.total) || 0),
+        pdfPath: '',
+        pdfReady: false,
+        createdAt,
+        updatedAt: new Date()
+    };
+    const filter = tripDbId
+        ? { tripDbId }
+        : {
+            tripId: payload.tripId,
+            invoiceMonth: payload.invoiceMonth,
+            date: payload.date
+        };
+    await context.TripInvoice.updateOne(filter, payload, { upsert: true });
+    return payload;
+}
+
+async function syncTripInvoiceRecords(context, account, settings, trips, overview) {
+    if (!context || !context.TripInvoice) return [];
+    const rows = Array.isArray(trips) ? trips : [];
+    const synced = [];
+    for (const trip of rows) {
+        const record = await upsertTripInvoiceRecord(context, account, settings, trip, overview);
+        if (record) synced.push(record);
+    }
+    return synced;
+}
+
+async function buildAdminSecuritySummary() {
+    const since = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+    const failedEvents = await SystemErrorLog.find({
+        createdAt: { $gte: since },
+        source: { $in: ['auth_login_failure', 'auth_login_blocked', 'auth_login_validation'] }
+    }).sort({ createdAt: -1 }).limit(200).lean();
+    const blockedEvents = failedEvents.filter((item) => String(item.source || '') === 'auth_login_blocked');
+    const grouped = new Map();
+    failedEvents.forEach((item) => {
+        const username = String((item.meta && (item.meta.username || item.meta.userKey)) || 'unknown').trim() || 'unknown';
+        grouped.set(username, (grouped.get(username) || 0) + 1);
+    });
+    const suspicious = Array.from(grouped.entries())
+        .filter((entry) => entry[1] >= 3)
+        .map(([username, count]) => ({ username, failedAttempts: count }))
+        .sort((a, b) => b.failedAttempts - a.failedAttempts)
+        .slice(0, 10);
+    return {
+        windowStart: since.toISOString(),
+        failedLoginAttempts: failedEvents.length,
+        blockedLoginAttempts: blockedEvents.length,
+        suspiciousActivity: suspicious,
+        recentFailures: failedEvents.slice(0, 20)
+    };
+}
+
+async function buildAdminHealthSnapshot() {
+    const startedAt = new Date(Date.now() - Math.floor(process.uptime() * 1000));
+    const memory = process.memoryUsage();
+    const before = Date.now();
+    let dbStatus = 'disconnected';
+    let dbLatencyMs = null;
+    try {
+        dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+        await mongoose.connection.db.admin().ping();
+        dbLatencyMs = Date.now() - before;
+    } catch (err) {
+        dbStatus = 'error';
+        dbLatencyMs = Date.now() - before;
+    }
+    return {
+        serverStatus: 'online',
+        databaseStatus: dbStatus,
+        apiStatus: 'online',
+        uptimeSeconds: Math.floor(process.uptime()),
+        startedAt: startedAt.toISOString(),
+        dbLatencyMs,
+        memory: {
+            rss: Number(memory.rss || 0),
+            heapUsed: Number(memory.heapUsed || 0),
+            heapTotal: Number(memory.heapTotal || 0)
+        }
+    };
+}
+
+async function runAdminGlobalSearch(query, limit) {
+    const search = String(query || '').trim().toLowerCase();
+    if (!search) {
+        return { users: [], companies: [], entries: [] };
+    }
+    const safeLimit = Math.min(50, Math.max(5, Number(limit) || 15));
+    const [users, companies, entriesPayload] = await Promise.all([
+        (async () => {
+            const overviews = await Promise.all((await getAllAccountsForAdmin()).map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser)));
+            return overviews.filter((item) => [item.userKey, item.name, item.mobileNumber, item.vehicleNumber, item.email, item.companyName].join(' ').toLowerCase().includes(search)).slice(0, safeLimit);
+        })(),
+        (async () => {
+            const options = await getCompanyOptionsForAdmin();
+            return options.filter((item) => [item.companyName, item.ownerName, item.userKey, item.vehicleNumber].join(' ').toLowerCase().includes(search)).slice(0, safeLimit);
+        })(),
+        (async () => {
+            const accountRefs = await getAllAccountsForAdmin();
+            const collected = [];
+            for (const ref of accountRefs) {
+                const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+                const context = getDbContextByName(ref.account.dbName);
+                await ensureLegacyDataMigrated(ref.account, context);
+                const trips = await context.Trip.find().sort({ createdAt: -1 }).limit(120).lean();
+                trips.forEach((trip) => {
+                    const row = {
+                        userKey: overview.userKey,
+                        userName: overview.name,
+                        vehicleNumber: overview.vehicleNumber,
+                        companyName: overview.companyName,
+                        entryId: String(trip._id || ''),
+                        tripId: String(trip.tripId || ''),
+                        date: String(trip.date || ''),
+                        pickup: String(trip.pickup || ''),
+                        drop: String(trip.drop || ''),
+                        total: String(trip.total || ''),
+                        createdAt: trip.createdAt || null
+                    };
+                    if ([row.userKey, row.userName, row.vehicleNumber, row.companyName, row.tripId, row.pickup, row.drop, row.date].join(' ').toLowerCase().includes(search)) {
+                        collected.push(row);
+                    }
+                });
+            }
+            return collected.slice(0, safeLimit);
+        })()
+    ]);
+    return { users, companies, entries: entriesPayload };
+}
+
+async function buildSystemBackupPayload() {
+    const accountRefs = await getAllAccountsForAdmin();
+    const [features, announcements, activities, notifications, errors, users] = await Promise.all([
+        getAdminFeatureFlags(),
+        AdminAnnouncement.find().sort({ createdAt: -1 }).lean(),
+        AdminActivity.find().sort({ createdAt: -1 }).lean(),
+        AdminNotification.find().sort({ createdAt: -1 }).lean(),
+        SystemErrorLog.find().sort({ createdAt: -1 }).lean(),
+        SignupUser.find().lean()
+    ]);
+    const accounts = [];
+    for (const ref of accountRefs) {
+        const context = getDbContextByName(ref.account.dbName);
+        await ensureLegacyDataMigrated(ref.account, context);
+        const [trips, settings, profile, tripInvoices] = await Promise.all([
+            context.Trip.find().lean(),
+            context.AppSettings.find().lean(),
+            context.UserProfile.find().lean(),
+            context.TripInvoice.find().lean()
+        ]);
+        accounts.push({
+            userKey: String(ref.account.userKey || ''),
+            dbName: String(ref.account.dbName || ''),
+            dbFolder: String(ref.account.dbFolder || ''),
+            isDefaultUser: !ref.account.isDynamicUser,
+            trips,
+            settings,
+            profile,
+            tripInvoices
+        });
+    }
+    return {
+        version: '2.1',
+        generatedAt: new Date().toISOString(),
+        main: {
+            users,
+            announcements,
+            features,
+            activities,
+            notifications,
+            errors
+        },
+        accounts
+    };
+}
+
+async function restoreSystemBackupPayload(backup) {
+    const source = backup || {};
+    const main = source.main || {};
+    const accountRows = Array.isArray(source.accounts) ? source.accounts : [];
+    await SignupUser.deleteMany({});
+    if (Array.isArray(main.users) && main.users.length) {
+        await SignupUser.insertMany(main.users, { ordered: false });
+    }
+    await AdminAnnouncement.deleteMany({});
+    if (Array.isArray(main.announcements) && main.announcements.length) {
+        await AdminAnnouncement.insertMany(main.announcements, { ordered: false });
+    }
+    await AdminActivity.deleteMany({});
+    if (Array.isArray(main.activities) && main.activities.length) {
+        await AdminActivity.insertMany(main.activities, { ordered: false });
+    }
+    await AdminNotification.deleteMany({});
+    if (Array.isArray(main.notifications) && main.notifications.length) {
+        await AdminNotification.insertMany(main.notifications, { ordered: false });
+    }
+    await SystemErrorLog.deleteMany({});
+    if (Array.isArray(main.errors) && main.errors.length) {
+        await SystemErrorLog.insertMany(main.errors, { ordered: false });
+    }
+    await updateAdminFeatureFlags(main.features || DEFAULT_ADMIN_FEATURE_FLAGS);
+
+    for (const item of accountRows) {
+        const dbName = String((item && item.dbName) || '').trim();
+        if (!dbName) continue;
+        const context = getDbContextByName(dbName);
+        await context.Trip.deleteMany({});
+        await context.AppSettings.deleteMany({});
+        await context.UserProfile.deleteMany({});
+        await context.TripInvoice.deleteMany({});
+        if (Array.isArray(item.trips) && item.trips.length) {
+            await context.Trip.insertMany(item.trips, { ordered: false });
+        }
+        if (Array.isArray(item.settings) && item.settings.length) {
+            await context.AppSettings.insertMany(item.settings, { ordered: false });
+        }
+        if (Array.isArray(item.profile) && item.profile.length) {
+            await context.UserProfile.insertMany(item.profile, { ordered: false });
+        }
+        if (Array.isArray(item.tripInvoices) && item.tripInvoices.length) {
+            await context.TripInvoice.insertMany(item.tripInvoices, { ordered: false });
+        }
+    }
+}
+
+async function getAllAccountsForAdmin() {
+    const users = await SignupUser.find({ isActive: true }).lean();
+    const dynamicAccounts = users
+        .map((user) => ({ account: getAccountFromSignupUser(user), signupUser: user }))
+        .filter((item) => !!item.account);
+
+    const defaults = AUTH_ACCOUNTS.map((account) => ({ account, signupUser: null }));
+    const dynamicByKey = new Set(dynamicAccounts.map((item) => String(item.account.userKey || '').trim()));
+
+    const merged = defaults.filter((item) => !dynamicByKey.has(String(item.account.userKey || '').trim()));
+    return merged.concat(dynamicAccounts);
+}
+
+async function buildAdminAccountOverview(account, signupUser) {
+    const context = getDbContextByName(account.dbName);
+    await ensureLegacyDataMigrated(account, context);
+
+    const [profile, settings, tripCount] = await Promise.all([
+        context.UserProfile.findOne({ key: 'profile' }).lean(),
+        context.AppSettings.findOne({ key: 'singleton' }).lean(),
+        context.Trip.countDocuments()
+    ]);
+
+    const profileName = String((profile && profile.name) || (signupUser && signupUser.name) || getAccountDisplayName(account) || '').trim();
+    const mobileNumber = String(
+        (signupUser && signupUser.mobileNumber) ||
+        (profile && profile.mobileNumber) ||
+        (account && account.username) ||
+        ''
+    ).trim();
+    const vehicleNumber = String((signupUser && signupUser.vehicleNumber) || (profile && profile.vehicleNumber) || '').trim();
+    const email = String((signupUser && signupUser.email) || (profile && profile.email) || '').trim();
+    const companyName = String((settings && settings.companyName) || profileName || getAccountDisplayName(account)).trim();
+    const rate = Number((settings && settings.rate) != null ? settings.rate : 21);
+    const language = normalizeLanguageCode(settings && settings.language);
+
+    return {
+        userKey: String(account.userKey || '').trim(),
+        dbName: String(account.dbName || '').trim(),
+        dbFolder: String(account.dbFolder || '').trim(),
+        isDynamicUser: !!account.isDynamicUser,
+        isDefaultUser: !account.isDynamicUser,
+        name: profileName,
+        mobileNumber,
+        vehicleNumber,
+        email,
+        companyName,
+        rate: Number.isFinite(rate) ? rate : 21,
+        language,
+        totalCompanies: companyName ? 1 : 0,
+        totalEntries: Number(tripCount || 0),
+        totalTrips: Number(tripCount || 0),
+        isBlocked: !!(signupUser && signupUser.isBlocked),
+        createdAt: signupUser && signupUser.createdAt ? signupUser.createdAt : null,
+        updatedAt: signupUser && signupUser.updatedAt ? signupUser.updatedAt : null
+    };
 }
 
 function getDbContextByName(dbName) {
@@ -224,8 +1447,9 @@ function getDbContextByName(dbName) {
     const context = {
         db,
         Trip: db.models.Trip || db.model('Trip', tripSchema),
+        TripInvoice: db.models.TripInvoice || db.model('TripInvoice', tripInvoiceSchema),
         AppSettings: db.models.AppSettings || db.model('AppSettings', appSettingsSchema),
-        PinState: db.models.PinState || db.model('PinState', pinStateSchema)
+        UserProfile: db.models.UserProfile || db.model('UserProfile', userProfileSchema)
     };
     dbContextCache.set(safeDbName, context);
     return context;
@@ -242,25 +1466,22 @@ async function ensureLegacyDataMigrated(account, targetContext) {
     }
 
     const migrationPromise = (async () => {
-        const [targetTripCount, targetSettings, targetPin] = await Promise.all([
+        const [targetTripCount, targetSettings] = await Promise.all([
             targetContext.Trip.estimatedDocumentCount(),
-            targetContext.AppSettings.findOne({ key: 'singleton' }).lean(),
-            targetContext.PinState.findOne({ key: 'singleton' }).lean()
+            targetContext.AppSettings.findOne({ key: 'singleton' }).lean()
         ]);
 
         const needsTripMigration = targetTripCount === 0;
         const needsSettingsMigration = !targetSettings;
-        const needsPinMigration = !targetPin;
-        if (!needsTripMigration && !needsSettingsMigration && !needsPinMigration) return;
+        if (!needsTripMigration && !needsSettingsMigration) return;
 
         const legacyContext = getDbContextByName(legacyDbName);
-        const [legacyTrips, legacySettings, legacyPin] = await Promise.all([
+        const [legacyTrips, legacySettings] = await Promise.all([
             needsTripMigration ? legacyContext.Trip.find().lean() : Promise.resolve([]),
-            needsSettingsMigration ? legacyContext.AppSettings.findOne({ key: 'singleton' }).lean() : Promise.resolve(null),
-            needsPinMigration ? legacyContext.PinState.findOne({ key: 'singleton' }).lean() : Promise.resolve(null)
+            needsSettingsMigration ? legacyContext.AppSettings.findOne({ key: 'singleton' }).lean() : Promise.resolve(null)
         ]);
 
-        if (!legacyTrips.length && !legacySettings && !legacyPin) return;
+        if (!legacyTrips.length && !legacySettings) return;
         let migrated = false;
 
         if (needsTripMigration && legacyTrips.length) {
@@ -279,16 +1500,6 @@ async function ensureLegacyDataMigrated(account, targetContext) {
             await targetContext.AppSettings.updateOne(
                 { key: 'singleton' },
                 settingsDoc,
-                { upsert: true }
-            );
-            migrated = true;
-        }
-
-        if (needsPinMigration && legacyPin) {
-            const { _id, __v, ...pinDoc } = legacyPin;
-            await targetContext.PinState.updateOne(
-                { key: 'singleton' },
-                pinDoc,
                 { upsert: true }
             );
             migrated = true;
@@ -314,63 +1525,6 @@ async function getDbContextForRequest(req) {
     return { account, ...context };
 }
 
-function normalizePin(pin) {
-    const raw = String(pin == null ? '' : pin).trim();
-    let out = '';
-    for (const ch of raw) {
-        const cp = ch.codePointAt(0);
-        if (cp >= 48 && cp <= 57) { out += ch; continue; } // 0-9
-        if (cp >= 0x0660 && cp <= 0x0669) { out += String(cp - 0x0660); continue; } // Arabic-Indic
-        if (cp >= 0x06F0 && cp <= 0x06F9) { out += String(cp - 0x06F0); continue; } // Extended Arabic-Indic
-        if (cp >= 0x0966 && cp <= 0x096F) { out += String(cp - 0x0966); continue; } // Devanagari
-        if (cp >= 0x09E6 && cp <= 0x09EF) { out += String(cp - 0x09E6); continue; } // Bengali
-        if (cp >= 0x0AE6 && cp <= 0x0AEF) { out += String(cp - 0x0AE6); continue; } // Gujarati
-        if (cp >= 0xFF10 && cp <= 0xFF19) { out += String(cp - 0xFF10); continue; } // Full-width
-    }
-    return out;
-}
-
-function isValidPin(pin) {
-    return /^\d{4}$/.test(normalizePin(pin));
-}
-
-function isSha256Hash(v) {
-    return /^[a-f0-9]{64}$/i.test(String(v || '').trim());
-}
-
-function hashPin(pin) {
-    return crypto.createHash('sha256').update(normalizePin(pin)).digest('hex');
-}
-
-async function getPinDoc(PinStateModel) {
-    let doc = await PinStateModel.findOne({ key: 'singleton' });
-    if (!doc) {
-        doc = await PinStateModel.create({
-            key: 'singleton',
-            pinHash: hashPin(DEFAULT_PIN),
-            updatedAt: new Date()
-        });
-        return doc;
-    }
-    const current = String(doc.pinHash || '').trim();
-    if (!current) {
-        doc.pinHash = hashPin(DEFAULT_PIN);
-        doc.updatedAt = new Date();
-        await doc.save();
-    } else if (isValidPin(current)) {
-        // Legacy migration: plain 4-digit pin stored directly.
-        doc.pinHash = hashPin(current);
-        doc.updatedAt = new Date();
-        await doc.save();
-    } else if (!isSha256Hash(current)) {
-        // Unknown legacy format: reset safely to default.
-        doc.pinHash = hashPin(DEFAULT_PIN);
-        doc.updatedAt = new Date();
-        await doc.save();
-    }
-    return doc;
-}
-
     async function getSettings(AppSettingsModel, account) {
         const defaultCompanyName = getAccountDisplayName(account);
         let doc = await AppSettingsModel.findOne({ key: 'singleton' }).lean();
@@ -379,6 +1533,7 @@ async function getPinDoc(PinStateModel) {
                 key: 'singleton',
                 companyName: defaultCompanyName,
                 rate: 21,
+                language: 'en',
                 darkMode: 'off',
                 installPromptShown: false,
                 invoiceLogoUrl: '/icon-512.png',
@@ -392,6 +1547,7 @@ async function getPinDoc(PinStateModel) {
         return {
             companyName: (doc && doc.companyName) ? doc.companyName : defaultCompanyName,
             rate: (doc && doc.rate != null) ? Number(doc.rate) : 21,
+            language: normalizeLanguageCode(doc && doc.language),
             darkMode: (doc && doc.darkMode) ? doc.darkMode : 'off',
             installPromptShown: !!(doc && doc.installPromptShown),
             invoiceLogoUrl: (doc && doc.invoiceLogoUrl) ? String(doc.invoiceLogoUrl) : '/icon-512.png',
@@ -424,6 +1580,7 @@ async function getPinDoc(PinStateModel) {
             const {
                 companyName,
                 rate,
+                language,
                 darkMode,
                 installPromptShown,
                 invoiceLogoUrl,
@@ -439,8 +1596,10 @@ async function getPinDoc(PinStateModel) {
             if (!doc) {
                 doc = await context.AppSettings.create({ key: 'singleton' });
             }
+            const previousCompanyName = String(doc.companyName || '').trim();
             if (companyName != null) doc.companyName = String(companyName);
             if (rate != null) doc.rate = Number(rate);
+            if (language != null) doc.language = normalizeLanguageCode(language);
             if (darkMode != null && ['on', 'off'].includes(darkMode)) doc.darkMode = darkMode;
             if (installPromptShown != null) doc.installPromptShown = Boolean(installPromptShown);
             if (invoiceLogoUrl != null) doc.invoiceLogoUrl = String(invoiceLogoUrl || '').trim() || '/icon-512.png';
@@ -456,9 +1615,26 @@ async function getPinDoc(PinStateModel) {
                 doc.invoicePaymentStatus = allowed.includes(nextStatus) ? nextStatus : 'Pending';
             }
             await doc.save();
+            const nextCompanyName = String(doc.companyName || '').trim();
+            if (nextCompanyName && nextCompanyName !== previousCompanyName) {
+                await recordAdminActivity({
+                    type: previousCompanyName ? 'company_updated' : 'company_created',
+                    actor: String((context.account && context.account.userKey) || ''),
+                    targetUserKey: String((context.account && context.account.userKey) || ''),
+                    message: previousCompanyName
+                        ? 'Company details updated by user'
+                        : 'Company created by user',
+                    meta: {
+                        oldCompanyName: previousCompanyName,
+                        companyName: nextCompanyName,
+                        rate: Number(doc.rate || 21)
+                    }
+                });
+            }
             res.json({
                 companyName: doc.companyName,
                 rate: Number(doc.rate),
+                language: normalizeLanguageCode(doc.language),
                 darkMode: doc.darkMode,
                 installPromptShown: !!doc.installPromptShown,
                 invoiceLogoUrl: String(doc.invoiceLogoUrl || '/icon-512.png'),
@@ -472,30 +1648,1454 @@ async function getPinDoc(PinStateModel) {
         }
     });
 
-    function requireAuth(req, res, next) {
-        const account = resolveSessionAccount(req);
-        if (account) {
+    async function requireAuth(req, res, next) {
+        try {
+            const account = resolveSessionAccount(req);
+            if (!account) {
+                return res.redirect(302, '/login');
+            }
+            if (account.isDynamicUser) {
+                const user = await SignupUser.findOne({ userKey: account.userKey, isActive: true }).lean();
+                if (!user || user.isBlocked) {
+                    clearSessionAccount(req);
+                    return res.redirect(302, '/login');
+                }
+            }
+            if (await isMaintenanceModeEnabled()) {
+                return sendMaintenancePage(res);
+            }
             req.authAccount = account;
             return next();
+        } catch (err) {
+            return res.redirect(302, '/login');
         }
-        res.redirect(302, '/login');
     }
 
-    function requireApiAuth(req, res, next) {
-        const account = resolveSessionAccount(req);
-        if (account) {
+    async function requireApiAuth(req, res, next) {
+        try {
+            const account = resolveSessionAccount(req);
+            if (!account) {
+                return res.status(401).json({ error: 'Unauthorized' });
+            }
+            if (account.isDynamicUser) {
+                const user = await SignupUser.findOne({ userKey: account.userKey, isActive: true }).lean();
+                if (!user) {
+                    clearSessionAccount(req);
+                    return res.status(401).json({ error: 'Unauthorized' });
+                }
+                if (user.isBlocked) {
+                    return res.status(403).json({ error: 'Account blocked by admin' });
+                }
+            }
+            if (await isMaintenanceModeEnabled()) {
+                return res.status(503).json({ error: 'Maintenance mode enabled by admin' });
+            }
             req.authAccount = account;
             return next();
+        } catch (err) {
+            return res.status(401).json({ error: 'Unauthorized' });
         }
-        res.status(401).json({ error: 'Unauthorized' });
     }
 
-    app.post('/auth/login', (req, res) => {
-        const username = String(req.body.username || '').trim();
-        const password = String(req.body.password || '').trim();
-        const account = findAccountByCredentials(username, password);
+    function requireAdminPageAuth(req, res, next) {
+        const admin = resolveAdminSession(req);
+        if (admin) {
+            req.adminAuth = admin;
+            return next();
+        }
+        return res.redirect(302, '/admin/login');
+    }
 
-        if (account) {
+    function requireAdminApiAuth(req, res, next) {
+        const admin = resolveAdminSession(req);
+        if (admin) {
+            req.adminAuth = admin;
+            return next();
+        }
+        return res.status(401).json({ error: 'Admin authentication required' });
+    }
+
+    function sendMaintenancePage(res) {
+        const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tripset Maintenance</title>
+    <style>
+        body { margin: 0; font-family: system-ui, sans-serif; background: linear-gradient(135deg, #020617, #0f172a); color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+        .shell { max-width: 32rem; width: 100%; background: rgba(15,23,42,0.88); border: 1px solid rgba(148,163,184,0.14); border-radius: 1.5rem; padding: 2rem; box-shadow: 0 20px 60px rgba(2,6,23,0.35); }
+        .eyebrow { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: #fdba74; }
+        h1 { margin: 0.75rem 0 0; font-size: 2rem; line-height: 1.1; }
+        p { color: #cbd5e1; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="eyebrow">Tripset Maintenance</div>
+        <h1>Service is temporarily unavailable.</h1>
+        <p>The admin has enabled maintenance mode. User access is paused until maintenance is completed.</p>
+    </div>
+</body>
+</html>`;
+        return res.status(503).send(html);
+    }
+
+    function parseDateRangeStart(input) {
+        const raw = String(input || '').trim();
+        if (!raw) return null;
+        const dt = new Date(raw + 'T00:00:00.000Z');
+        if (Number.isNaN(dt.getTime())) return null;
+        return dt;
+    }
+
+    function parseDateRangeEnd(input) {
+        const raw = String(input || '').trim();
+        if (!raw) return null;
+        const dt = new Date(raw + 'T23:59:59.999Z');
+        if (Number.isNaN(dt.getTime())) return null;
+        return dt;
+    }
+
+    app.get('/api/admin/auth/status', (req, res) => {
+        const admin = resolveAdminSession(req);
+        return res.json({
+            isAuthenticated: !!admin,
+            username: admin ? admin.username : null
+        });
+    });
+
+    app.post('/admin/auth/login', async (req, res) => {
+        try {
+            const username = String((req.body && req.body.username) || '').trim();
+            const password = String((req.body && req.body.password) || '').trim();
+            const valid = await validateAdminCredentials(username, password);
+            if (!valid) {
+                return res.status(401).json({ error: 'Invalid admin credentials' });
+            }
+            setAdminSession(req);
+            req.session.save((err) => {
+                if (err) return res.status(500).json({ error: 'Failed to save admin session' });
+                return res.json({ success: true, username: ADMIN_USERNAME });
+            });
+        } catch (err) {
+            return res.status(500).json({ error: 'Admin login failed' });
+        }
+    });
+
+    app.post('/admin/auth/logout', (req, res) => {
+        clearAdminSession(req);
+        req.session.save(() => {
+            res.json({ success: true });
+        });
+    });
+
+    app.get('/api/admin/dashboard', requireAdminApiAuth, async (req, res) => {
+        try {
+            const accountRefs = await getAllAccountsForAdmin();
+            const overviews = await Promise.all(
+                accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser))
+            );
+
+            const totalUsers = overviews.length;
+            const totalCompanies = overviews.reduce((acc, item) => acc + Number(item.totalCompanies || 0), 0);
+            const totalEntries = overviews.reduce((acc, item) => acc + Number(item.totalEntries || 0), 0);
+            const totalTrips = overviews.reduce((acc, item) => acc + Number(item.totalTrips || 0), 0);
+
+            const recentActivity = await AdminActivity.find()
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .lean();
+
+            const monthKeys = [];
+            const monthLabels = [];
+            const monthMap = {};
+            for (let idx = 5; idx >= 0; idx -= 1) {
+                const dt = new Date();
+                dt.setUTCDate(1);
+                dt.setUTCMonth(dt.getUTCMonth() - idx);
+                const key = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+                monthKeys.push(key);
+                monthLabels.push(dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+                monthMap[key] = 0;
+            }
+
+            for (const ref of accountRefs) {
+                const context = getDbContextByName(ref.account.dbName);
+                await ensureLegacyDataMigrated(ref.account, context);
+                const rows = await context.Trip.aggregate([
+                    {
+                        $match: {
+                            createdAt: { $gte: new Date(new Date().setUTCMonth(new Date().getUTCMonth() - 6)) }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: {
+                                year: { $year: '$createdAt' },
+                                month: { $month: '$createdAt' }
+                            },
+                            count: { $sum: 1 }
+                        }
+                    }
+                ]);
+                rows.forEach((row) => {
+                    const key = `${row._id.year}-${String(row._id.month).padStart(2, '0')}`;
+                    if (Object.prototype.hasOwnProperty.call(monthMap, key)) {
+                        monthMap[key] += Number(row.count || 0);
+                    }
+                });
+            }
+
+            return res.json({
+                totals: {
+                    totalUsers,
+                    totalCompanies,
+                    totalEntries,
+                    totalTrips
+                },
+                analytics: {
+                    monthLabels,
+                    entriesByMonth: monthKeys.map((key) => Number(monthMap[key] || 0))
+                },
+                recentActivity,
+                users: overviews
+                    .sort((a, b) => Number(b.totalEntries || 0) - Number(a.totalEntries || 0))
+                    .slice(0, 10)
+            });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load admin dashboard' });
+        }
+    });
+
+    app.get('/api/admin/users', requireAdminApiAuth, async (req, res) => {
+        try {
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const compact = String((req.query && req.query.compact) || '').trim() === '1';
+            const accountRefs = await getAllAccountsForAdmin();
+            let users = await Promise.all(
+                accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser))
+            );
+
+            if (search) {
+                users = users.filter((item) => {
+                    const hay = [
+                        item.userKey,
+                        item.name,
+                        item.mobileNumber,
+                        item.email,
+                        item.vehicleNumber,
+                        item.companyName
+                    ].join(' ').toLowerCase();
+                    return hay.includes(search);
+                });
+            }
+
+            users.sort((a, b) => {
+                const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return bTs - aTs;
+            });
+
+            if (compact) {
+                return res.json(users.map((u) => ({
+                    userKey: u.userKey,
+                    name: u.name,
+                    isBlocked: !!u.isBlocked,
+                    isDefaultUser: !!u.isDefaultUser
+                })));
+            }
+            return res.json(users);
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load users' });
+        }
+    });
+
+    app.get('/api/admin/users/:userKey', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            if (!targetKey) return res.status(400).json({ error: 'User key is required' });
+            const accountRefs = await getAllAccountsForAdmin();
+            const ref = accountRefs.find((item) => String(item.account.userKey || '').trim() === targetKey);
+            if (!ref) return res.status(404).json({ error: 'User not found' });
+
+            const details = await buildAdminAccountOverview(ref.account, ref.signupUser);
+            const context = getDbContextByName(ref.account.dbName);
+            await ensureLegacyDataMigrated(ref.account, context);
+            const recentEntries = await context.Trip.find().sort({ createdAt: -1 }).limit(15).lean();
+            return res.json({ ...details, recentEntries });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load user details' });
+        }
+    });
+
+    app.put('/api/admin/users/:userKey', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const user = await SignupUser.findOne({ userKey: targetKey, isActive: true });
+            if (!user) return res.status(404).json({ error: 'User not found' });
+
+            const name = normalizePersonName(req.body && req.body.name);
+            const mobileNumber = normalizeMobileNumber(req.body && req.body.mobileNumber);
+            const vehicleNumber = normalizeVehicleNumber(req.body && req.body.vehicleNumber);
+            const email = normalizeEmail(req.body && req.body.email);
+
+            if (!name || !mobileNumber || !vehicleNumber || !email) {
+                return res.status(400).json({ error: 'All fields are required' });
+            }
+            if (!isValidMobileNumber(mobileNumber)) {
+                return res.status(400).json({ error: 'Mobile number must be exactly 10 digits' });
+            }
+            if (!isValidVehicleNumber(vehicleNumber)) {
+                return res.status(400).json({ error: 'Vehicle number is invalid' });
+            }
+            if (!isValidEmail(email)) {
+                return res.status(400).json({ error: 'Email ID is invalid' });
+            }
+
+            const duplicate = await SignupUser.findOne({
+                _id: { $ne: user._id },
+                $or: [{ mobileNumber }, { email }]
+            }).lean();
+            if (duplicate) {
+                if (String(duplicate.mobileNumber || '') === mobileNumber) {
+                    return res.status(409).json({ error: 'This mobile number is already registered' });
+                }
+                return res.status(409).json({ error: 'This email ID is already registered' });
+            }
+
+            user.name = name;
+            user.mobileNumber = mobileNumber;
+            user.vehicleNumber = vehicleNumber;
+            user.email = email;
+            await user.save();
+
+            const account = getAccountFromSignupUser(user);
+            const context = getDbContextByName(account.dbName);
+            await ensureLegacyDataMigrated(account, context);
+            await context.UserProfile.updateOne(
+                { key: 'profile' },
+                {
+                    key: 'profile',
+                    name,
+                    mobileNumber,
+                    vehicleNumber,
+                    email,
+                    updatedAt: new Date()
+                },
+                { upsert: true }
+            );
+
+            await recordAdminActivity({
+                type: 'admin_user_updated',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: 'Admin updated user profile',
+                meta: { name, mobileNumber, email, vehicleNumber }
+            });
+
+            const updated = await buildAdminAccountOverview(account, user.toObject ? user.toObject() : user);
+            return res.json(updated);
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to update user' });
+        }
+    });
+
+    app.post('/api/admin/users/:userKey/block', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const blocked = !!(req.body && req.body.blocked);
+            const user = await SignupUser.findOne({ userKey: targetKey, isActive: true });
+            if (!user) return res.status(404).json({ error: 'User not found' });
+
+            user.isBlocked = blocked;
+            user.blockedAt = blocked ? new Date() : null;
+            await user.save();
+
+            if (blocked) {
+                try {
+                    await mongoose.connection.db.collection('sessions').deleteMany({ 'session.authUserKey': targetKey });
+                } catch (sessionErr) {
+                    console.warn('Session cleanup warning after block:', sessionErr.message);
+                }
+            }
+
+            await recordAdminActivity({
+                type: blocked ? 'admin_user_blocked' : 'admin_user_unblocked',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: blocked ? 'Admin blocked user' : 'Admin unblocked user',
+                meta: { blocked }
+            });
+
+            return res.json({ success: true, isBlocked: blocked });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to update block status' });
+        }
+    });
+
+    app.post('/api/admin/users/:userKey/reset-password', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const user = await SignupUser.findOne({ userKey: targetKey, isActive: true });
+            if (!user) return res.status(404).json({ error: 'User not found' });
+            const requestedPassword = String((req.body && req.body.newPassword) || '').trim();
+            const nextPassword = requestedPassword || generateTemporaryPassword();
+            if (nextPassword.length < 6) {
+                return res.status(400).json({ error: 'Password must be at least 6 characters' });
+            }
+            user.passwordHash = await bcrypt.hash(nextPassword, SIGNUP_PASSWORD_SALT_ROUNDS);
+            await user.save();
+            try {
+                await mongoose.connection.db.collection('sessions').deleteMany({ 'session.authUserKey': targetKey });
+            } catch (sessionErr) {
+                console.warn('Session cleanup warning after password reset:', sessionErr.message);
+            }
+            await recordAdminActivity({
+                type: 'admin_user_password_reset',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: 'Admin reset user password',
+                meta: { generated: !requestedPassword, suppressNotification: true }
+            });
+            return res.json({ success: true, password: nextPassword, generated: !requestedPassword });
+        } catch (err) {
+            await recordSystemError('admin_reset_password', err, { userKey: String(req.params.userKey || '') }, 'error');
+            return res.status(500).json({ error: 'Failed to reset password' });
+        }
+    });
+
+    app.delete('/api/admin/users/:userKey', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const user = await SignupUser.findOne({ userKey: targetKey, isActive: true }).lean();
+            if (!user) return res.status(404).json({ error: 'User not found' });
+
+            const dbName = String(user.dbName || '').trim();
+            if (dbName) {
+                const context = getDbContextByName(dbName);
+                await context.db.dropDatabase();
+                dbContextCache.delete(dbName);
+            }
+            await SignupUser.deleteOne({ userKey: targetKey });
+            try {
+                await mongoose.connection.db.collection('sessions').deleteMany({ 'session.authUserKey': targetKey });
+            } catch (sessionErr) {
+                console.warn('Session cleanup warning after admin delete:', sessionErr.message);
+            }
+            for (const key of legacyMigrationCache.keys()) {
+                if (String(key).startsWith(String(targetKey) + ':')) {
+                    legacyMigrationCache.delete(key);
+                }
+            }
+
+            await recordAdminActivity({
+                type: 'admin_user_deleted',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: 'Admin deleted user account',
+                meta: { dbName }
+            });
+
+            return res.json({ success: true });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to delete user' });
+        }
+    });
+
+    app.get('/api/admin/companies', requireAdminApiAuth, async (req, res) => {
+        try {
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const compact = String((req.query && req.query.compact) || '').trim() === '1';
+            const accountRefs = await getAllAccountsForAdmin();
+            let companies = await Promise.all(
+                accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser))
+            );
+            companies = companies.map((item) => ({
+                userKey: item.userKey,
+                ownerName: item.name,
+                companyName: item.companyName,
+                vehicleNumber: item.vehicleNumber,
+                rate: item.rate,
+                totalEntries: item.totalEntries,
+                isDefaultUser: item.isDefaultUser
+            }));
+            if (search) {
+                companies = companies.filter((item) => {
+                    const hay = [item.userKey, item.ownerName, item.companyName, item.vehicleNumber].join(' ').toLowerCase();
+                    return hay.includes(search);
+                });
+            }
+            if (compact) {
+                return res.json(companies.map((item) => ({
+                    userKey: item.userKey,
+                    companyName: item.companyName,
+                    ownerName: item.ownerName
+                })));
+            }
+            return res.json(companies);
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load companies' });
+        }
+    });
+
+    app.put('/api/admin/companies/:userKey', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const companyName = String((req.body && req.body.companyName) || '').trim();
+            const rate = Number((req.body && req.body.rate) || 21);
+            if (!companyName) return res.status(400).json({ error: 'Company name is required' });
+
+            const accountRefs = await getAllAccountsForAdmin();
+            const ref = accountRefs.find((item) => String(item.account.userKey || '').trim() === targetKey);
+            if (!ref) return res.status(404).json({ error: 'User not found' });
+
+            const context = getDbContextByName(ref.account.dbName);
+            await ensureLegacyDataMigrated(ref.account, context);
+            let doc = await context.AppSettings.findOne({ key: 'singleton' });
+            if (!doc) doc = await context.AppSettings.create({ key: 'singleton' });
+            const oldCompanyName = String(doc.companyName || '').trim();
+            doc.companyName = companyName;
+            doc.rate = Number.isFinite(rate) ? Math.max(0, rate) : 21;
+            await doc.save();
+
+            await recordAdminActivity({
+                type: 'admin_company_updated',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: 'Admin updated company settings',
+                meta: { oldCompanyName, companyName: doc.companyName, rate: Number(doc.rate || 21) }
+            });
+
+            return res.json({
+                success: true,
+                userKey: targetKey,
+                companyName: String(doc.companyName || ''),
+                rate: Number(doc.rate || 21)
+            });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to update company' });
+        }
+    });
+
+    app.delete('/api/admin/companies/:userKey', requireAdminApiAuth, async (req, res) => {
+        try {
+            const targetKey = String(req.params.userKey || '').trim();
+            const accountRefs = await getAllAccountsForAdmin();
+            const ref = accountRefs.find((item) => String(item.account.userKey || '').trim() === targetKey);
+            if (!ref) return res.status(404).json({ error: 'User not found' });
+
+            const context = getDbContextByName(ref.account.dbName);
+            await ensureLegacyDataMigrated(ref.account, context);
+            let doc = await context.AppSettings.findOne({ key: 'singleton' });
+            if (!doc) doc = await context.AppSettings.create({ key: 'singleton' });
+            const oldCompanyName = String(doc.companyName || '').trim();
+            doc.companyName = getAccountDisplayName(ref.account);
+            doc.rate = 21;
+            await doc.save();
+
+            await recordAdminActivity({
+                type: 'admin_company_deleted',
+                actor: ADMIN_USERNAME,
+                targetUserKey: targetKey,
+                message: 'Admin reset company to default',
+                meta: { oldCompanyName, companyName: String(doc.companyName || '') }
+            });
+
+            return res.json({ success: true, companyName: String(doc.companyName || '') });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to delete company' });
+        }
+    });
+
+    app.get('/api/admin/entries', requireAdminApiAuth, async (req, res) => {
+        try {
+            const filterUserKey = String((req.query && req.query.userKey) || '').trim();
+            const filterCompany = String((req.query && req.query.company) || '').trim().toLowerCase();
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const dateFrom = parseDateRangeStart(req.query && req.query.from);
+            const dateTo = parseDateRangeEnd(req.query && req.query.to);
+            const limitRaw = Number((req.query && req.query.limit) || 300);
+            const limit = Math.min(1500, Math.max(50, Number.isFinite(limitRaw) ? limitRaw : 300));
+
+            const accountRefs = await getAllAccountsForAdmin();
+            const filteredRefs = filterUserKey
+                ? accountRefs.filter((item) => String(item.account.userKey || '').trim() === filterUserKey)
+                : accountRefs;
+            const filteredOverview = await Promise.all(
+                filteredRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser))
+            );
+            const overviewByKey = new Map(filteredOverview.map((item) => [String(item.userKey || ''), item]));
+            const entries = [];
+
+            for (const ref of filteredRefs) {
+                const context = getDbContextByName(ref.account.dbName);
+                await ensureLegacyDataMigrated(ref.account, context);
+
+                const query = {};
+                if (dateFrom || dateTo) {
+                    query.createdAt = {};
+                    if (dateFrom) query.createdAt.$gte = dateFrom;
+                    if (dateTo) query.createdAt.$lte = dateTo;
+                }
+                const [settings, trips] = await Promise.all([
+                    context.AppSettings.findOne({ key: 'singleton' }).lean(),
+                    context.Trip.find(query).sort({ createdAt: -1 }).limit(limit).lean()
+                ]);
+                const overview = overviewByKey.get(String(ref.account.userKey || '')) || {};
+                const companyName = String((settings && settings.companyName) || overview.companyName || getAccountDisplayName(ref.account)).trim();
+                trips.forEach((trip) => {
+                    entries.push({
+                        userKey: String(ref.account.userKey || ''),
+                        userName: String(overview.name || (ref.signupUser ? String(ref.signupUser.name || '') : getAccountDisplayName(ref.account))),
+                        companyName,
+                        vehicleNumber: String(overview.vehicleNumber || ''),
+                        entryId: String(trip._id || ''),
+                        tripId: String(trip.tripId || ''),
+                        date: String(trip.date || ''),
+                        pickup: String(trip.pickup || ''),
+                        drop: String(trip.drop || ''),
+                        km: Number(trip.km || 0),
+                        total: String(trip.total || ''),
+                        createdAt: trip.createdAt || null
+                    });
+                });
+            }
+
+            entries.sort((a, b) => {
+                const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return bTs - aTs;
+            });
+
+            const searchedEntries = search
+                ? entries.filter((item) => [
+                    item.userName,
+                    item.userKey,
+                    item.companyName,
+                    item.vehicleNumber,
+                    item.tripId,
+                    item.pickup,
+                    item.drop
+                ].join(' ').toLowerCase().includes(search))
+                : entries;
+            const finalEntries = filterCompany
+                ? searchedEntries.filter((item) => String(item.companyName || '').trim().toLowerCase() === filterCompany)
+                : searchedEntries;
+
+            return res.json({
+                total: finalEntries.length,
+                entries: finalEntries.slice(0, limit)
+            });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load entries' });
+        }
+    });
+
+    app.delete('/api/admin/entries/:userKey/:entryId', requireAdminApiAuth, async (req, res) => {
+        try {
+            const userKey = String(req.params.userKey || '').trim();
+            const entryId = String(req.params.entryId || '').trim();
+            if (!userKey || !entryId) return res.status(400).json({ error: 'Invalid entry reference' });
+
+            const accountRefs = await getAllAccountsForAdmin();
+            const ref = accountRefs.find((item) => String(item.account.userKey || '').trim() === userKey);
+            if (!ref) return res.status(404).json({ error: 'User not found' });
+
+            const context = getDbContextByName(ref.account.dbName);
+            await ensureLegacyDataMigrated(ref.account, context);
+            const deleted = await context.Trip.findByIdAndDelete(entryId);
+            if (!deleted) return res.status(404).json({ error: 'Entry not found' });
+            await context.TripInvoice.deleteMany({
+                $or: [
+                    { tripDbId: String(deleted._id || '') },
+                    {
+                        tripId: String((deleted && deleted.tripId) || '').trim(),
+                        date: String((deleted && deleted.date) || '').trim()
+                    }
+                ]
+            });
+
+            await recordAdminActivity({
+                type: 'admin_entry_deleted',
+                actor: ADMIN_USERNAME,
+                targetUserKey: userKey,
+                message: 'Admin deleted trip entry',
+                meta: { entryId, tripId: String(deleted.tripId || '') }
+            });
+
+            return res.json({ success: true });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to delete entry' });
+        }
+    });
+
+    app.get('/api/admin/reports/summary', requireAdminApiAuth, async (req, res) => {
+        try {
+            const accountRefs = await getAllAccountsForAdmin();
+            const overviews = await Promise.all(
+                accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser))
+            );
+            const companyWise = overviews.map((item) => ({
+                userKey: item.userKey,
+                ownerName: item.name,
+                companyName: item.companyName,
+                totalEntries: item.totalEntries
+            }));
+            const userActivity = await AdminActivity.aggregate([
+                { $group: { _id: '$targetUserKey', actions: { $sum: 1 } } },
+                { $sort: { actions: -1 } },
+                { $limit: 20 }
+            ]);
+
+            return res.json({
+                totals: {
+                    users: overviews.length,
+                    entries: overviews.reduce((sum, item) => sum + Number(item.totalEntries || 0), 0),
+                    companies: overviews.reduce((sum, item) => sum + Number(item.totalCompanies || 0), 0),
+                    trips: overviews.reduce((sum, item) => sum + Number(item.totalTrips || 0), 0)
+                },
+                companyWise,
+                topUsersByEntries: overviews
+                    .map((item) => ({ userKey: item.userKey, name: item.name, totalEntries: item.totalEntries }))
+                    .sort((a, b) => Number(b.totalEntries || 0) - Number(a.totalEntries || 0))
+                    .slice(0, 20),
+                userActivity: userActivity.map((row) => ({
+                    userKey: String(row._id || ''),
+                    actions: Number(row.actions || 0)
+                }))
+            });
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to generate reports' });
+        }
+    });
+
+    app.get('/api/admin/activity', requireAdminApiAuth, async (req, res) => {
+        try {
+            const scope = String((req.query && req.query.scope) || '').trim().toLowerCase();
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const from = parseDateRangeStart(req.query && req.query.from);
+            const to = parseDateRangeEnd(req.query && req.query.to);
+            const limitRaw = Number((req.query && req.query.limit) || 100);
+            const limit = Math.min(500, Math.max(20, Number.isFinite(limitRaw) ? limitRaw : 100));
+            const query = {};
+            if (from || to) {
+                query.createdAt = {};
+                if (from) query.createdAt.$gte = from;
+                if (to) query.createdAt.$lte = to;
+            }
+            let logs = await AdminActivity.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+            if (scope === 'admin') {
+                logs = logs.filter((item) => String(item.type || '').startsWith('admin_') || String(item.actor || '') === ADMIN_USERNAME);
+            } else if (scope === 'user') {
+                logs = logs.filter((item) => !String(item.type || '').startsWith('admin_'));
+            }
+            if (search) {
+                logs = logs.filter((item) => [item.type, item.actor, item.targetUserKey, item.message, JSON.stringify(item.meta || {})].join(' ').toLowerCase().includes(search));
+            }
+            return res.json(logs);
+        } catch (err) {
+            return res.status(500).json({ error: 'Failed to load activity logs' });
+        }
+    });
+
+    app.get('/api/admin/announcements', requireAdminApiAuth, async (req, res) => {
+        try {
+            const includeInactive = String((req.query && req.query.includeInactive) || '').trim() === '1';
+            return res.json(await getAdminAnnouncements(includeInactive, 50));
+        } catch (err) {
+            await recordSystemError('admin_announcements_list', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load announcements' });
+        }
+    });
+
+    app.post('/api/admin/announcements', requireAdminApiAuth, async (req, res) => {
+        try {
+            const payload = buildAdminAnnouncementPayload(req.body);
+            const created = await AdminAnnouncement.create({
+                ...payload,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+            await recordAdminActivity({
+                type: 'admin_announcement_created',
+                actor: ADMIN_USERNAME,
+                message: 'Admin created announcement',
+                meta: {
+                    title: payload.title,
+                    announcementId: String(created._id || ''),
+                    targetType: payload.targetType,
+                    defaultLanguage: payload.defaultLanguage
+                }
+            });
+            return res.status(201).json(created);
+        } catch (err) {
+            await recordSystemError('admin_announcement_create', err, {}, 'error');
+            return res.status(err && err.message === 'Announcement message is required' ? 400 : 500).json({ error: err && err.message ? err.message : 'Failed to create announcement' });
+        }
+    });
+
+    app.put('/api/admin/announcements/:id', requireAdminApiAuth, async (req, res) => {
+        try {
+            const payload = buildAdminAnnouncementPayload(req.body);
+            const updated = await AdminAnnouncement.findByIdAndUpdate(
+                req.params.id,
+                {
+                    ...payload,
+                    updatedAt: new Date()
+                },
+                { new: true }
+            );
+            if (!updated) return res.status(404).json({ error: 'Announcement not found' });
+            await recordAdminActivity({
+                type: 'admin_announcement_updated',
+                actor: ADMIN_USERNAME,
+                message: 'Admin updated announcement',
+                meta: {
+                    title: payload.title,
+                    announcementId: String(updated._id || ''),
+                    targetType: payload.targetType,
+                    defaultLanguage: payload.defaultLanguage
+                }
+            });
+            return res.json(updated);
+        } catch (err) {
+            await recordSystemError('admin_announcement_update', err, { id: String(req.params.id || '') }, 'error');
+            return res.status(err && err.message === 'Announcement message is required' ? 400 : 500).json({ error: err && err.message ? err.message : 'Failed to update announcement' });
+        }
+    });
+
+    app.delete('/api/admin/announcements/:id', requireAdminApiAuth, async (req, res) => {
+        try {
+            const deleted = await AdminAnnouncement.findByIdAndDelete(req.params.id);
+            if (!deleted) return res.status(404).json({ error: 'Announcement not found' });
+            await recordAdminActivity({
+                type: 'admin_announcement_deleted',
+                actor: ADMIN_USERNAME,
+                message: 'Admin deleted announcement',
+                meta: { announcementId: String(req.params.id || '') }
+            });
+            return res.json({ success: true });
+        } catch (err) {
+            await recordSystemError('admin_announcement_delete', err, { id: String(req.params.id || '') }, 'error');
+            return res.status(500).json({ error: 'Failed to delete announcement' });
+        }
+    });
+
+    app.get('/api/admin/features', requireAdminApiAuth, async (req, res) => {
+        try {
+            return res.json(await getAdminFeatureFlags());
+        } catch (err) {
+            await recordSystemError('admin_features_get', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load feature flags' });
+        }
+    });
+
+    app.put('/api/admin/features', requireAdminApiAuth, async (req, res) => {
+        try {
+            const flags = await updateAdminFeatureFlags(req.body || {});
+            await recordAdminActivity({
+                type: 'admin_features_updated',
+                actor: ADMIN_USERNAME,
+                message: 'Admin updated feature controls',
+                meta: flags
+            });
+            return res.json(flags);
+        } catch (err) {
+            await recordSystemError('admin_features_update', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to update feature flags' });
+        }
+    });
+
+    app.get('/api/admin/notifications', requireAdminApiAuth, async (req, res) => {
+        try {
+            const unreadOnly = String((req.query && req.query.unreadOnly) || '').trim() === '1';
+            const limitRaw = Number((req.query && req.query.limit) || 30);
+            const limit = Math.min(200, Math.max(10, Number.isFinite(limitRaw) ? limitRaw : 30));
+            const query = unreadOnly ? { isRead: false } : {};
+            const items = await AdminNotification.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+            return res.json(items);
+        } catch (err) {
+            await recordSystemError('admin_notifications_get', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load notifications' });
+        }
+    });
+
+    app.post('/api/admin/notifications/:id/read', requireAdminApiAuth, async (req, res) => {
+        try {
+            const updated = await AdminNotification.findByIdAndUpdate(req.params.id, { isRead: true }, { new: true });
+            if (!updated) return res.status(404).json({ error: 'Notification not found' });
+            return res.json({ success: true });
+        } catch (err) {
+            await recordSystemError('admin_notification_read', err, { id: String(req.params.id || '') }, 'error');
+            return res.status(500).json({ error: 'Failed to update notification' });
+        }
+    });
+
+    app.post('/api/admin/notifications/read-all', requireAdminApiAuth, async (req, res) => {
+        try {
+            await AdminNotification.updateMany({ isRead: false }, { isRead: true });
+            return res.json({ success: true });
+        } catch (err) {
+            await recordSystemError('admin_notifications_read_all', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to update notifications' });
+        }
+    });
+
+    app.get('/api/admin/errors', requireAdminApiAuth, async (req, res) => {
+        try {
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const from = parseDateRangeStart(req.query && req.query.from);
+            const to = parseDateRangeEnd(req.query && req.query.to);
+            const limitRaw = Number((req.query && req.query.limit) || 100);
+            const limit = Math.min(500, Math.max(20, Number.isFinite(limitRaw) ? limitRaw : 100));
+            const query = {};
+            if (from || to) {
+                query.createdAt = {};
+                if (from) query.createdAt.$gte = from;
+                if (to) query.createdAt.$lte = to;
+            }
+            let logs = await SystemErrorLog.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+            if (search) {
+                logs = logs.filter((item) => [item.source, item.message, item.level, JSON.stringify(item.meta || {})].join(' ').toLowerCase().includes(search));
+            }
+            return res.json(logs);
+        } catch (err) {
+            await recordSystemError('admin_errors_list', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load system errors' });
+        }
+    });
+
+    app.get('/api/admin/security', requireAdminApiAuth, async (req, res) => {
+        try {
+            return res.json(await buildAdminSecuritySummary());
+        } catch (err) {
+            await recordSystemError('admin_security', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load security summary' });
+        }
+    });
+
+    app.get('/api/admin/health', requireAdminApiAuth, async (req, res) => {
+        try {
+            return res.json(await buildAdminHealthSnapshot());
+        } catch (err) {
+            await recordSystemError('admin_health', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load system health' });
+        }
+    });
+
+    app.get('/api/admin/storage', requireAdminApiAuth, async (req, res) => {
+        try {
+            const limit = Number((req.query && req.query.limit) || 50);
+            return res.json(await buildAdminStorageUsage(limit));
+        } catch (err) {
+            await recordSystemError('admin_storage', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load storage usage' });
+        }
+    });
+
+    app.get('/api/admin/vehicle-stats', requireAdminApiAuth, async (req, res) => {
+        try {
+            const limit = Number((req.query && req.query.limit) || 25);
+            return res.json(await buildVehiclePerformanceStats(limit));
+        } catch (err) {
+            await recordSystemError('admin_vehicle_stats', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load vehicle stats' });
+        }
+    });
+
+    app.get('/api/admin/search', requireAdminApiAuth, async (req, res) => {
+        try {
+            const query = String((req.query && req.query.q) || '').trim();
+            const limit = Number((req.query && req.query.limit) || 12);
+            return res.json(await runAdminGlobalSearch(query, limit));
+        } catch (err) {
+            await recordSystemError('admin_global_search', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to run global search' });
+        }
+    });
+
+    app.get('/api/admin/route-analytics', requireAdminApiAuth, async (req, res) => {
+        try {
+            const limit = Number((req.query && req.query.limit) || 25);
+            return res.json(await buildRouteAnalytics(limit));
+        } catch (err) {
+            await recordSystemError('admin_route_analytics', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load route analytics' });
+        }
+    });
+
+    app.get('/api/admin/profit-analytics', requireAdminApiAuth, async (req, res) => {
+        try {
+            return res.json(await buildProfitAnalytics());
+        } catch (err) {
+            await recordSystemError('admin_profit_analytics', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load profit analytics' });
+        }
+    });
+
+    app.get('/api/admin/insights', requireAdminApiAuth, async (req, res) => {
+        try {
+            return res.json(await buildSystemInsights());
+        } catch (err) {
+            await recordSystemError('admin_insights', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load data insights' });
+        }
+    });
+
+    app.get('/api/admin/invoices', requireAdminApiAuth, async (req, res) => {
+        try {
+            const userKeyFilter = String((req.query && req.query.userKey) || '').trim();
+            const companyFilter = String((req.query && req.query.company) || '').trim().toLowerCase();
+            const monthFilter = String((req.query && req.query.month) || '').trim();
+            const limitRaw = Number((req.query && req.query.limit) || 200);
+            const limit = Math.min(1000, Math.max(20, Number.isFinite(limitRaw) ? limitRaw : 200));
+            const accountRefs = await getAllAccountsForAdmin();
+            const collected = [];
+            for (const ref of accountRefs) {
+                if (userKeyFilter && String(ref.account.userKey || '').trim() !== userKeyFilter) continue;
+                const overview = await buildAdminAccountOverview(ref.account, ref.signupUser);
+                const context = getDbContextByName(ref.account.dbName);
+                await ensureLegacyDataMigrated(ref.account, context);
+                const query = {};
+                if (/^\d{4}-\d{2}$/.test(monthFilter)) {
+                    query.invoiceMonth = monthFilter;
+                }
+                let items = await context.TripInvoice.find(query).sort({ updatedAt: -1, createdAt: -1 }).limit(limit).lean();
+                items = items.filter((item) => {
+                    if (companyFilter && String((item && item.companyName) || '').trim().toLowerCase() !== companyFilter) return false;
+                    return true;
+                });
+                items.forEach((item) => {
+                    collected.push({
+                        userKey: overview.userKey,
+                        userName: overview.name,
+                        companyName: String((item && item.companyName) || overview.companyName || ''),
+                        vehicleNumber: String((item && item.vehicleNumber) || overview.vehicleNumber || ''),
+                        tripId: String((item && item.tripId) || ''),
+                        invoiceMonth: String((item && item.invoiceMonth) || ''),
+                        invoiceNumber: String((item && item.invoiceNumber) || ''),
+                        route: String((item && item.route) || ''),
+                        total: Number((item && item.total) || 0),
+                        pdfPath: String((item && item.pdfPath) || ''),
+                        pdfReady: item && item.pdfReady === true,
+                        createdAt: item && item.createdAt ? item.createdAt : null,
+                        updatedAt: item && item.updatedAt ? item.updatedAt : null
+                    });
+                });
+            }
+            collected.sort((a, b) => {
+                const left = new Date(a.updatedAt || a.createdAt || 0).getTime();
+                const right = new Date(b.updatedAt || b.createdAt || 0).getTime();
+                return right - left;
+            });
+            return res.json(collected.slice(0, limit));
+        } catch (err) {
+            await recordSystemError('admin_invoices_list', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load automated invoice records' });
+        }
+    });
+
+    app.get('/api/admin/email-report/preview', requireAdminApiAuth, async (req, res) => {
+        try {
+            const range = String((req.query && req.query.range) || 'daily').trim().toLowerCase();
+            const [dashboard, profit, analytics] = await Promise.all([
+                (async () => {
+                    const accountRefs = await getAllAccountsForAdmin();
+                    const overviews = await Promise.all(accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser)));
+                    return {
+                        totalTrips: overviews.reduce((sum, item) => sum + Number(item.totalTrips || 0), 0),
+                        activeUsers: overviews.filter((item) => Number(item.totalTrips || 0) > 0).length
+                    };
+                })(),
+                buildProfitAnalytics(),
+                buildSystemInsights()
+            ]);
+            return res.json({
+                range,
+                subject: `Tripset ${range} system summary`,
+                preview: {
+                    totalTrips: dashboard.totalTrips,
+                    totalRevenue: Number(profit.overallRevenue || 0),
+                    overallProfit: profit.overallProfit,
+                    activeUsers: dashboard.activeUsers,
+                    mostUsedRoute: analytics.mostUsedRoute,
+                    mostActiveUser: analytics.mostActiveUser
+                },
+                deliveryMode: 'preview'
+            });
+        } catch (err) {
+            await recordSystemError('admin_email_report_preview', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to build email report preview' });
+        }
+    });
+
+    app.post('/api/admin/email-report/send', requireAdminApiAuth, async (req, res) => {
+        try {
+            const range = String((req.body && req.body.range) || 'daily').trim().toLowerCase();
+            const preview = await (async () => {
+                const [dashboard, profit, analytics] = await Promise.all([
+                    (async () => {
+                        const accountRefs = await getAllAccountsForAdmin();
+                        const overviews = await Promise.all(accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser)));
+                        return {
+                            totalTrips: overviews.reduce((sum, item) => sum + Number(item.totalTrips || 0), 0),
+                            activeUsers: overviews.filter((item) => Number(item.totalTrips || 0) > 0).length
+                        };
+                    })(),
+                    buildProfitAnalytics(),
+                    buildSystemInsights()
+                ]);
+                return {
+                    totalTrips: dashboard.totalTrips,
+                    totalRevenue: profit.overallRevenue,
+                    overallProfit: profit.overallProfit,
+                    activeUsers: dashboard.activeUsers,
+                    mostUsedRoute: analytics.mostUsedRoute,
+                    mostActiveUser: analytics.mostActiveUser
+                };
+            })();
+            await recordAdminActivity({
+                type: 'admin_email_report_generated',
+                actor: ADMIN_USERNAME,
+                message: 'Admin generated an automated email report preview',
+                meta: { range, preview, suppressNotification: true }
+            });
+            return res.json({ success: true, range, deliveryMode: 'preview', preview });
+        } catch (err) {
+            await recordSystemError('admin_email_report_send', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to generate email report' });
+        }
+    });
+
+    app.get('/api/admin/user-activity', requireAdminApiAuth, async (req, res) => {
+        try {
+            const search = String((req.query && req.query.search) || '').trim().toLowerCase();
+            const from = parseDateRangeStart(req.query && req.query.from);
+            const to = parseDateRangeEnd(req.query && req.query.to);
+            const limitRaw = Number((req.query && req.query.limit) || 150);
+            const limit = Math.min(600, Math.max(20, Number.isFinite(limitRaw) ? limitRaw : 150));
+            const query = {};
+            if (from || to) {
+                query.createdAt = {};
+                if (from) query.createdAt.$gte = from;
+                if (to) query.createdAt.$lte = to;
+            }
+            let logs = await AdminActivity.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+            logs = await enrichAdminActivityLogs(logs);
+            if (search) {
+                logs = logs.filter((item) => [
+                    item.userName,
+                    item.userKey,
+                    item.companyName,
+                    item.vehicleNumber,
+                    item.message,
+                    item.type
+                ].join(' ').toLowerCase().includes(search));
+            }
+            return res.json(logs);
+        } catch (err) {
+            await recordSystemError('admin_user_activity', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load user activity logs' });
+        }
+    });
+
+    app.get('/api/admin/analytics', requireAdminApiAuth, async (req, res) => {
+        try {
+            const accountRefs = await getAllAccountsForAdmin();
+            const overviews = await Promise.all(accountRefs.map((ref) => buildAdminAccountOverview(ref.account, ref.signupUser)));
+            const dayLabels = [];
+            const dauMap = {};
+            const entryMap = {};
+            for (let idx = 13; idx >= 0; idx -= 1) {
+                const dt = new Date();
+                dt.setHours(0, 0, 0, 0);
+                dt.setDate(dt.getDate() - idx);
+                const key = dt.toISOString().slice(0, 10);
+                dayLabels.push(key);
+                dauMap[key] = new Set();
+                entryMap[key] = 0;
+            }
+            const activityRows = await AdminActivity.find({
+                createdAt: { $gte: new Date(new Date().setDate(new Date().getDate() - 14)) },
+                type: { $in: ['user_login', 'entry_created'] }
+            }).lean();
+            activityRows.forEach((row) => {
+                const key = row && row.createdAt ? new Date(row.createdAt).toISOString().slice(0, 10) : '';
+                if (!key || !Object.prototype.hasOwnProperty.call(entryMap, key)) return;
+                if (row.type === 'user_login') {
+                    const userKey = getPrimaryActivityUserKey(row);
+                    if (userKey) dauMap[key].add(userKey);
+                }
+                if (row.type === 'entry_created') {
+                    entryMap[key] += 1;
+                }
+            });
+
+            const growthLabels = [];
+            const growthMap = {};
+            for (let idx = 5; idx >= 0; idx -= 1) {
+                const dt = new Date();
+                dt.setUTCDate(1);
+                dt.setUTCMonth(dt.getUTCMonth() - idx);
+                const key = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+                growthLabels.push(key);
+                growthMap[key] = 0;
+            }
+            const signupRows = await SignupUser.find({
+                createdAt: { $gte: new Date(new Date().setUTCMonth(new Date().getUTCMonth() - 6)) }
+            }).lean();
+            signupRows.forEach((row) => {
+                if (!row.createdAt) return;
+                const dt = new Date(row.createdAt);
+                const key = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+                if (Object.prototype.hasOwnProperty.call(growthMap, key)) growthMap[key] += 1;
+            });
+
+            return res.json({
+                dayLabels,
+                dailyActiveUsers: dayLabels.map((key) => dauMap[key].size),
+                entriesPerDay: dayLabels.map((key) => entryMap[key] || 0),
+                growthLabels,
+                monthlyGrowth: growthLabels.map((key) => growthMap[key] || 0),
+                mostActiveUsers: overviews
+                    .map((item) => ({ userKey: item.userKey, name: item.name, totalEntries: item.totalEntries }))
+                    .sort((a, b) => Number(b.totalEntries || 0) - Number(a.totalEntries || 0))
+                    .slice(0, 10)
+            });
+        } catch (err) {
+            await recordSystemError('admin_analytics', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load analytics' });
+        }
+    });
+
+    app.get('/api/admin/backup/export', requireAdminApiAuth, async (req, res) => {
+        try {
+            const payload = await buildSystemBackupPayload();
+            const filename = `tripset-system-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            await recordAdminActivity({
+                type: 'admin_backup_exported',
+                actor: ADMIN_USERNAME,
+                message: 'Admin exported full system backup',
+                meta: { filename, suppressNotification: true }
+            });
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            return res.send(JSON.stringify(payload, null, 2));
+        } catch (err) {
+            await recordSystemError('admin_backup_export', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to generate backup' });
+        }
+    });
+
+    app.post('/api/admin/backup/restore', requireAdminApiAuth, async (req, res) => {
+        try {
+            const backup = req.body && req.body.backup ? req.body.backup : req.body;
+            if (!backup || typeof backup !== 'object' || !backup.main || !Array.isArray(backup.accounts)) {
+                return res.status(400).json({ error: 'Invalid backup payload' });
+            }
+            await restoreSystemBackupPayload(backup);
+            await recordAdminActivity({
+                type: 'admin_backup_restored',
+                actor: ADMIN_USERNAME,
+                message: 'Admin restored system backup',
+                meta: { generatedAt: String(backup.generatedAt || ''), suppressNotification: true }
+            });
+            return res.json({ success: true });
+        } catch (err) {
+            await recordSystemError('admin_backup_restore', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to restore backup' });
+        }
+    });
+
+    app.get('/api/public/config', async (req, res) => {
+        try {
+            const features = await getAdminFeatureFlags();
+            return res.json({ features });
+        } catch (err) {
+            return res.json({ features: DEFAULT_ADMIN_FEATURE_FLAGS });
+        }
+    });
+
+    app.get('/api/app/config', requireApiAuth, async (req, res) => {
+        try {
+            const requestedLanguage = normalizeLanguageCode(req.query && req.query.lang);
+            const [features, announcements] = await Promise.all([
+                getAdminFeatureFlags(),
+                getAnnouncementsForAccount(req.authAccount || resolveSessionAccount(req), requestedLanguage, 20)
+            ]);
+            return res.json({ features, announcements, language: requestedLanguage });
+        } catch (err) {
+            await recordSystemError('user_app_config', err, { userKey: String((req.authAccount && req.authAccount.userKey) || '') }, 'error');
+            return res.status(500).json({ error: 'Failed to load app config' });
+        }
+    });
+
+    app.get('/api/notices', requireApiAuth, async (req, res) => {
+        try {
+            const requestedLanguage = normalizeLanguageCode(req.query && req.query.lang);
+            const notices = await getAnnouncementsForAccount(req.authAccount || resolveSessionAccount(req), requestedLanguage, 40);
+            return res.json({ notices, language: requestedLanguage });
+        } catch (err) {
+            await recordSystemError('user_notice_list', err, { userKey: String((req.authAccount && req.authAccount.userKey) || '') }, 'error');
+            return res.status(500).json({ error: 'Failed to load notices' });
+        }
+    });
+
+    app.post('/api/activity/report-download', requireApiAuth, async (req, res) => {
+        try {
+            const account = req.authAccount || resolveSessionAccount(req);
+            const reportType = String((req.body && req.body.reportType) || '').trim() || 'report';
+            await recordAdminActivity({
+                type: 'report_downloaded',
+                actor: String((account && account.userKey) || ''),
+                targetUserKey: String((account && account.userKey) || ''),
+                message: 'User downloaded report',
+                meta: { reportType, displayName: getAccountDisplayName(account), suppressNotification: true }
+            });
+            return res.json({ success: true });
+        } catch (err) {
+            await recordSystemError('user_report_download_log', err, {}, 'warn');
+            return res.status(500).json({ error: 'Failed to record report activity' });
+        }
+    });
+
+    app.post('/auth/signup', async (req, res) => {
+        try {
+            const featureFlags = await getAdminFeatureFlags();
+            if (featureFlags.signupEnabled === false) {
+                return res.status(403).json({ error: 'Signup is currently disabled by admin' });
+            }
+            if (featureFlags.maintenanceEnabled === true) {
+                return res.status(503).json({ error: 'Tripset is temporarily unavailable due to maintenance mode' });
+            }
+            const validation = validateSignupPayload(req.body || {});
+            if (validation.error) {
+                return res.status(400).json({ error: validation.error });
+            }
+
+            const input = validation.value;
+            const existing = await SignupUser.findOne({
+                $or: [
+                    { mobileNumber: input.mobileNumber },
+                    { email: input.email }
+                ]
+            }).lean();
+
+            if (existing) {
+                if (existing.mobileNumber === input.mobileNumber) {
+                    return res.status(409).json({ error: 'This mobile number is already registered' });
+                }
+                return res.status(409).json({ error: 'This email ID is already registered' });
+            }
+
+            const storageInfo = buildUserStorageInfo(input.name, input.mobileNumber);
+            const passwordHash = await bcrypt.hash(input.password, SIGNUP_PASSWORD_SALT_ROUNDS);
+            const createdUser = await SignupUser.create({
+                userKey: storageInfo.userKey,
+                name: input.name,
+                mobileNumber: input.mobileNumber,
+                vehicleNumber: input.vehicleNumber,
+                email: input.email,
+                passwordHash,
+                dbFolder: storageInfo.dbFolder,
+                dbName: storageInfo.dbName,
+                isActive: true,
+                isBlocked: false,
+                blockedAt: null
+            });
+
+            const account = getAccountFromSignupUser(createdUser);
+            if (account) {
+                const context = getDbContextByName(account.dbName);
+                await getSettings(context.AppSettings, account);
+                await context.UserProfile.updateOne(
+                    { key: 'profile' },
+                    {
+                        key: 'profile',
+                        name: input.name,
+                        mobileNumber: input.mobileNumber,
+                        vehicleNumber: input.vehicleNumber,
+                        email: input.email,
+                        updatedAt: new Date()
+                    },
+                    { upsert: true }
+                );
+            }
+
+            await recordAdminActivity({
+                type: 'new_user_registration',
+                actor: 'system:signup',
+                targetUserKey: String(createdUser.userKey || ''),
+                message: 'New user registered',
+                meta: {
+                    name: String(createdUser.name || ''),
+                    mobileNumber: String(createdUser.mobileNumber || ''),
+                    email: String(createdUser.email || ''),
+                    dbName: String(createdUser.dbName || '')
+                }
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: 'Signup successful. Please login to continue.'
+            });
+        } catch (err) {
+            const conflictMessage = getSignupConflictMessage(err);
+            if (conflictMessage) {
+                await recordSystemError('auth_signup_conflict', new Error(conflictMessage), { body: { email: req.body && req.body.email, mobileNumber: req.body && req.body.mobileNumber } }, 'warn');
+                return res.status(409).json({ error: conflictMessage });
+            }
+            console.error('SIGNUP ERROR:', err);
+            await recordSystemError('auth_signup', err, { email: req.body && req.body.email, mobileNumber: req.body && req.body.mobileNumber }, 'error');
+            return res.status(500).json({ error: 'Failed to sign up' });
+        }
+    });
+
+    app.post('/auth/login', async (req, res) => {
+        try {
+            const username = normalizeMobileNumber(req.body.username || '');
+            const password = String(req.body.password || '').trim();
+            if (!username || !password) {
+                await recordSystemError('auth_login_validation', new Error('Missing username or password'), { username }, 'warn');
+                return res.status(400).json({ error: 'Username and password are required' });
+            }
+
+            let account = null;
+            const defaultAccount = findDefaultAccountByUsername(username);
+            if (defaultAccount) {
+                account = findDefaultAccountByCredentials(username, password);
+                if (!account) {
+                    await recordSystemError('auth_login_failure', new Error('Invalid credentials'), { username, accountType: 'default' }, 'warn');
+                    return res.status(401).json({ error: 'Invalid credentials' });
+                }
+            } else {
+                const signupUser = await findActiveSignupUserByMobile(username);
+                if (!signupUser) {
+                    await recordSystemError('auth_login_failure', new Error('User not registered'), { username, accountType: 'dynamic' }, 'warn');
+                    return res.status(404).json({ error: 'User not registered. Please sign up first.' });
+                }
+                if (signupUser.isBlocked) {
+                    await recordSystemError('auth_login_blocked', new Error('Blocked account attempted login'), { username, userKey: signupUser.userKey }, 'warn');
+                    return res.status(403).json({ error: 'Account blocked by admin' });
+                }
+                const passwordMatch = await bcrypt.compare(password, String(signupUser.passwordHash || ''));
+                if (!passwordMatch) {
+                    await recordSystemError('auth_login_failure', new Error('Invalid credentials'), { username, userKey: signupUser.userKey, accountType: 'dynamic' }, 'warn');
+                    return res.status(401).json({ error: 'Invalid credentials' });
+                }
+                account = getAccountFromSignupUser(signupUser);
+                if (!account) {
+                    await recordSystemError('auth_login_profile', new Error('Account profile is incomplete'), { username, userKey: signupUser.userKey }, 'error');
+                    return res.status(500).json({ error: 'Account profile is incomplete' });
+                }
+            }
+            if (await isMaintenanceModeEnabled()) {
+                await recordSystemError('auth_login_maintenance', new Error('Maintenance mode enabled'), { username }, 'warn');
+                return res.status(503).json({ error: 'Tripset is temporarily unavailable due to maintenance mode' });
+            }
+
             setSessionAccount(req, account);
             req.session.save((err) => {
                 if (err) {
@@ -503,6 +3103,15 @@ async function getPinDoc(PinStateModel) {
                     return res.status(500).json({ error: 'Failed to save session' });
                 }
                 console.log(`✅ Login successful for ${account.userKey} (${account.dbFolder})`);
+                recordAdminActivity({
+                    type: 'user_login',
+                    actor: String(account.userKey || ''),
+                    targetUserKey: String(account.userKey || ''),
+                    message: 'User login successful',
+                    meta: { displayName: getAccountDisplayName(account), suppressNotification: true }
+                }).catch(function(logErr) {
+                    console.warn('User login activity warning:', logErr.message);
+                });
                 return res.json({
                     success: true,
                     user: account.userKey,
@@ -510,8 +3119,10 @@ async function getPinDoc(PinStateModel) {
                     displayName: getAccountDisplayName(account)
                 });
             });
-        } else {
-            return res.status(401).json({ error: 'Invalid credentials' });
+        } catch (err) {
+            console.error('LOGIN ERROR:', err);
+            await recordSystemError('auth_login', err, { username: req.body && req.body.username }, 'error');
+            return res.status(500).json({ error: 'Login failed' });
         }
     });
 
@@ -520,105 +3131,95 @@ async function getPinDoc(PinStateModel) {
         res.json({ success: true });
     });
 
+app.post('/api/account/delete', requireApiAuth, async (req, res) => {
+    try {
+        const account = req.authAccount || resolveSessionAccount(req);
+        if (!account) return res.status(401).json({ error: 'Unauthorized' });
+
+        if (isDefaultAccount(account) || !account.isDynamicUser) {
+            return res.status(403).json({ error: 'Default accounts cannot be deleted' });
+        }
+
+        const termsAccepted = !!(req.body && req.body.termsAccepted);
+        const finalConfirmed = !!(req.body && req.body.finalConfirmed);
+        const finalConfirmation = String((req.body && req.body.finalConfirmation) || '').trim();
+        if (!termsAccepted) {
+            return res.status(400).json({ error: 'Please accept Terms & Conditions to continue' });
+        }
+        if (!finalConfirmed || finalConfirmation !== 'Yes, I want to delete my account') {
+            return res.status(400).json({ error: 'Final delete confirmation is required' });
+        }
+
+        const user = await SignupUser.findOne({ userKey: account.userKey, isActive: true });
+        if (!user) {
+            req.session.destroy(() => {});
+            return res.json({ success: true, deleted: true, alreadyDeleted: true });
+        }
+
+        const dbName = String(user.dbName || account.dbName || '').trim();
+        if (dbName) {
+            const dbContext = getDbContextByName(dbName);
+            await dbContext.db.dropDatabase();
+            dbContextCache.delete(dbName);
+        }
+
+        await SignupUser.deleteOne({ _id: user._id });
+        try {
+            await mongoose.connection.db.collection('sessions').deleteMany({ 'session.authUserKey': account.userKey });
+        } catch (sessionCleanupErr) {
+            console.warn('Session cleanup warning after account delete:', sessionCleanupErr.message);
+        }
+        await recordAdminActivity({
+            type: 'user_deleted',
+            actor: String(account.userKey || ''),
+            targetUserKey: String(account.userKey || ''),
+            message: 'User account deleted',
+            meta: {
+                dbName: String(dbName || ''),
+                by: 'self'
+            }
+        });
+        for (const key of legacyMigrationCache.keys()) {
+            if (String(key).startsWith(String(account.userKey || '') + ':')) {
+                legacyMigrationCache.delete(key);
+            }
+        }
+
+        req.session.destroy((err) => {
+            if (err) {
+                console.error('Session destroy error after account delete:', err);
+            }
+            return res.json({ success: true, deleted: true });
+        });
+    } catch (err) {
+        console.error('DELETE ACCOUNT ERROR:', err);
+        return res.status(500).json({ error: 'Failed to delete account' });
+    }
+});
+
 app.get('/api/auth/status', (req, res) => {
     const account = resolveSessionAccount(req);
-    res.json({
-        isAuthenticated: !!account,
-        user: account ? account.userKey : null,
-        dbFolder: account ? account.dbFolder : null,
-        displayName: account ? getAccountDisplayName(account) : null
+    getAdminFeatureFlags().then((features) => {
+        res.json({
+            isAuthenticated: !!account,
+            user: account ? account.userKey : null,
+            dbFolder: account ? account.dbFolder : null,
+            displayName: account ? getAccountDisplayName(account) : null,
+            isDynamicUser: !!(account && account.isDynamicUser),
+            canDeleteAccount: !!(account && account.isDynamicUser && !isDefaultAccount(account)),
+            maintenanceEnabled: features.maintenanceEnabled === true
+        });
+    }).catch(() => {
+        res.json({
+            isAuthenticated: !!account,
+            user: account ? account.userKey : null,
+            dbFolder: account ? account.dbFolder : null,
+            displayName: account ? getAccountDisplayName(account) : null,
+            isDynamicUser: !!(account && account.isDynamicUser),
+            canDeleteAccount: !!(account && account.isDynamicUser && !isDefaultAccount(account)),
+            maintenanceEnabled: false
+        });
     });
-});
-
-app.get('/api/pin/status', requireApiAuth, async (req, res) => {
-    try {
-        const context = await getDbContextForRequest(req);
-        if (!context) return res.status(401).json({ error: 'Unauthorized' });
-        const doc = await getPinDoc(context.PinState);
-        res.json({ isSet: !!String(doc.pinHash || '').trim() });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to get PIN status' });
-    }
-});
-
-app.post('/api/pin/set', requireApiAuth, async (req, res) => {
-    try {
-        const context = await getDbContextForRequest(req);
-        if (!context) return res.status(401).json({ error: 'Unauthorized' });
-        const pin = normalizePin(req.body.pin || '');
-        if (!isValidPin(pin)) {
-            return res.status(400).json({ error: 'PIN must be 4 digits' });
-        }
-
-        const doc = await getPinDoc(context.PinState);
-        if (String(doc.pinHash || '').trim()) {
-            return res.status(409).json({ error: 'PIN already set. Use change PIN.' });
-        }
-        doc.pinHash = hashPin(pin);
-        doc.updatedAt = new Date();
-        await doc.save();
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to set PIN' });
-    }
-});
-
-app.post('/api/pin/verify', requireApiAuth, async (req, res) => {
-    try {
-        const context = await getDbContextForRequest(req);
-        if (!context) return res.status(401).json({ error: 'Unauthorized' });
-        const pin = normalizePin(req.body.pin || '');
-        if (!isValidPin(pin)) {
-            return res.status(400).json({ error: 'PIN must be 4 digits' });
-        }
-
-        const doc = await getPinDoc(context.PinState);
-        const savedHash = String(doc.pinHash || '').trim();
-        if (!savedHash) {
-            return res.status(400).json({ error: 'PIN not set' });
-        }
-        let verified = hashPin(pin) === savedHash;
-        if (!verified && isValidPin(savedHash) && normalizePin(pin) === normalizePin(savedHash)) {
-            // One-time migration fallback for plain PIN in DB.
-            doc.pinHash = hashPin(pin);
-            doc.updatedAt = new Date();
-            await doc.save();
-            verified = true;
-        }
-
-        if (!verified) {
-            return res.status(401).json({ error: 'Invalid PIN' });
-        }
-
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to verify PIN' });
-    }
-});
-
-app.post('/api/pin/change', requireApiAuth, async (req, res) => {
-    try {
-        const context = await getDbContextForRequest(req);
-        if (!context) return res.status(401).json({ error: 'Unauthorized' });
-        const currentPin = normalizePin(req.body.currentPin || '');
-        const newPin = normalizePin(req.body.newPin || '');
-        if (!isValidPin(currentPin) || !isValidPin(newPin)) {
-            return res.status(400).json({ error: 'PIN must be 4 digits' });
-        }
-
-        const doc = await getPinDoc(context.PinState);
-        const savedHash = String(doc.pinHash || '').trim();
-        if (!savedHash || hashPin(currentPin) !== savedHash) {
-            return res.status(401).json({ error: 'Current PIN is wrong' });
-        }
-
-        doc.pinHash = hashPin(newPin);
-        doc.updatedAt = new Date();
-        await doc.save();
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to change PIN' });
-    }
 });
 
 // API Routes - OLD ENTRIES FIRST (Sort 1) - protected
@@ -642,9 +3243,71 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
                 const oldest = await context.Trip.find().sort({ createdAt: 1 }).limit(1);
                 if (oldest.length > 0) await context.Trip.deleteOne({ _id: oldest[0]._id });
             }
+            const possibleDuplicate = await context.Trip.findOne({
+                tripId: String((req.body && req.body.tripId) || '').trim(),
+                date: String((req.body && req.body.date) || '').trim()
+            }).lean();
             const newTrip = new context.Trip(req.body);
             await newTrip.save();
-            res.json(newTrip);
+            const [overview, settings] = await Promise.all([
+                buildAdminAccountOverview(context.account, null),
+                getSettings(context.AppSettings, context.account)
+            ]);
+            const invoiceRecord = await upsertTripInvoiceRecord(
+                context,
+                context.account,
+                settings,
+                newTrip.toObject ? newTrip.toObject() : newTrip,
+                overview
+            );
+            const alerts = detectSmartTripAlerts(newTrip.toObject ? newTrip.toObject() : newTrip, overview);
+            if (possibleDuplicate) {
+                alerts.push({
+                    title: 'Duplicate Trip Entry',
+                    message: `Duplicate trip detected for ${String((newTrip && newTrip.tripId) || 'trip')}`,
+                    meta: {
+                        tripId: String((newTrip && newTrip.tripId) || ''),
+                        userKey: String((overview && overview.userKey) || ''),
+                        duplicateEntryId: String((possibleDuplicate && possibleDuplicate._id) || '')
+                    }
+                });
+            }
+            for (const alert of alerts) {
+                await recordAdminNotification({
+                    type: 'smart_alert',
+                    title: alert.title,
+                    message: alert.message,
+                    meta: alert.meta || {}
+                });
+                await recordAdminActivity({
+                    type: 'smart_alert',
+                    actor: ADMIN_USERNAME,
+                    targetUserKey: String((overview && overview.userKey) || ''),
+                    message: alert.message,
+                    meta: { title: alert.title, ...(alert.meta || {}), suppressNotification: true }
+                });
+            }
+            await recordAdminActivity({
+                type: 'entry_created',
+                actor: String((context.account && context.account.userKey) || ''),
+                targetUserKey: String((context.account && context.account.userKey) || ''),
+                message: 'Trip entry created',
+                meta: {
+                    tripId: String((newTrip && newTrip.tripId) || ''),
+                    date: String((newTrip && newTrip.date) || ''),
+                    km: Number((newTrip && newTrip.km) || 0),
+                    total: String((newTrip && newTrip.total) || ''),
+                    invoiceMonth: invoiceRecord ? String(invoiceRecord.invoiceMonth || '') : '',
+                    invoiceNumber: invoiceRecord ? String(invoiceRecord.invoiceNumber || '') : ''
+                }
+            });
+            res.json({
+                ...(newTrip.toObject ? newTrip.toObject() : newTrip),
+                invoice: invoiceRecord ? {
+                    invoiceMonth: String(invoiceRecord.invoiceMonth || ''),
+                    invoiceNumber: String(invoiceRecord.invoiceNumber || '')
+                } : null
+            });
         } catch (err) {
             res.status(500).json({ error: err.message });
         }
@@ -654,7 +3317,19 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
     try {
         const context = await getDbContextForRequest(req);
         if (!context) return res.status(401).json({ error: 'Unauthorized' });
+        const existingTrip = await context.Trip.findById(req.params.id).lean();
         await context.Trip.findByIdAndDelete(req.params.id);
+        if (existingTrip) {
+            await context.TripInvoice.deleteMany({
+                $or: [
+                    { tripDbId: String(existingTrip._id || '') },
+                    {
+                        tripId: String((existingTrip && existingTrip.tripId) || '').trim(),
+                        date: String((existingTrip && existingTrip.date) || '').trim()
+                    }
+                ]
+            });
+        }
         res.json({ success: true });
 
     } catch (err) {
@@ -701,6 +3376,17 @@ app.get('/api/trips', requireApiAuth, async (req, res) => {
 
             // Insert all trips
             const result = await context.Trip.insertMany(tripsToInsert, { ordered: false });
+            const [settings, overview] = await Promise.all([
+                getSettings(context.AppSettings, context.account),
+                buildAdminAccountOverview(context.account, null)
+            ]);
+            await syncTripInvoiceRecords(
+                context,
+                context.account,
+                settings,
+                result.map((item) => item.toObject ? item.toObject() : item),
+                overview
+            );
             
             res.json({ 
                 success: true, 
@@ -722,11 +3408,28 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     try {
         const context = await getDbContextForRequest(req);
         if (!context) return res.status(401).json({ error: 'Unauthorized' });
+        const existingTrip = await context.Trip.findById(req.params.id).lean();
         const updated = await context.Trip.findByIdAndUpdate(
             req.params.id,
             req.body,
             { new: true }
         );
+        if (updated) {
+            const [settings, overview] = await Promise.all([
+                getSettings(context.AppSettings, context.account),
+                buildAdminAccountOverview(context.account, null)
+            ]);
+            await upsertTripInvoiceRecord(
+                context,
+                context.account,
+                settings,
+                updated.toObject ? updated.toObject() : updated,
+                overview
+            );
+            if (existingTrip && String(existingTrip._id || '') !== String(updated._id || '')) {
+                await context.TripInvoice.deleteMany({ tripDbId: String(existingTrip._id || '') });
+            }
+        }
         res.json(updated);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -748,10 +3451,12 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
             const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
             const end = new Date(year, month, 1, 0, 0, 0, 0); // exclusive
 
+            const overview = await buildAdminAccountOverview(context.account, null);
             const trips = await context.Trip.find({ createdAt: { $gte: start, $lt: end } })
                 .sort({ createdAt: 1 })
                 .lean();
             const settings = await getSettings(context.AppSettings, context.account);
+            await syncTripInvoiceRecords(context, context.account, settings, trips, overview);
 
             const companyName = String(settings.companyName || getAccountDisplayName(context.account));
             const safeTaxPercent = Math.max(0, Number(settings.invoiceTaxPercent) || 0);
@@ -780,6 +3485,15 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
             const grandTotal = subtotal + taxAmount;
             const monthToken = monthStr.replace('-', '');
             const invoiceNumber = 'INV-' + monthToken + '-' + String(items.length || 0).padStart(3, '0');
+            await context.TripInvoice.updateMany(
+                { invoiceMonth: monthStr },
+                {
+                    companyName,
+                    pdfPath: `/api/invoice/${monthStr}`,
+                    pdfReady: items.length > 0,
+                    updatedAt: new Date()
+                }
+            );
 
             return res.json({
                 companyName,
@@ -804,8 +3518,1164 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     }
 });
 
+    app.get('/api/invoices/history', requireApiAuth, async (req, res) => {
+        try {
+            const context = await getDbContextForRequest(req);
+            if (!context) return res.status(401).json({ error: 'Unauthorized' });
+            const month = String((req.query && req.query.month) || '').trim();
+            const query = {};
+            if (/^\d{4}-\d{2}$/.test(month)) {
+                query.invoiceMonth = month;
+            }
+            const limitRaw = Number((req.query && req.query.limit) || 100);
+            const limit = Math.min(500, Math.max(10, Number.isFinite(limitRaw) ? limitRaw : 100));
+            const items = await context.TripInvoice.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+            return res.json(items.map((item) => ({
+                _id: String(item && item._id ? item._id : ''),
+                tripId: String((item && item.tripId) || ''),
+                invoiceMonth: String((item && item.invoiceMonth) || ''),
+                companyName: String((item && item.companyName) || ''),
+                vehicleNumber: String((item && item.vehicleNumber) || ''),
+                route: String((item && item.route) || ''),
+                invoiceNumber: String((item && item.invoiceNumber) || ''),
+                date: String((item && item.date) || ''),
+                total: Number((item && item.total) || 0),
+                pdfPath: String((item && item.pdfPath) || ''),
+                pdfReady: item && item.pdfReady === true,
+                createdAt: item && item.createdAt ? item.createdAt : null,
+                updatedAt: item && item.updatedAt ? item.updatedAt : null
+            })));
+        } catch (err) {
+            await recordSystemError('invoice_history_list', err, {}, 'error');
+            return res.status(500).json({ error: 'Failed to load invoice history' });
+        }
+    });
+
 
     // Serve Frontend
+    app.get('/signup', (req, res) => {
+        if (req.session && req.session.isAuthenticated) {
+            return res.redirect(302, '/');
+        }
+        const csp = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com data:",
+            "img-src 'self' data: blob:",
+            "connect-src 'self' http://localhost:3000"
+        ].join('; ');
+        res.setHeader('Content-Security-Policy', csp);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const pageHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Tripset</title>
+    <link rel="manifest" href="/manifest.json?v=${PWA_ASSET_VERSION}" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <link rel="shortcut icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <link rel="apple-touch-icon" href="/icon-192.png?v=${PWA_ASSET_VERSION}">
+    <meta name="theme-color" content="#F97316">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        .signup-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .signup-box {
+            background: white;
+            border-radius: 1.5rem;
+            padding: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+            max-width: 26rem;
+            width: 100%;
+            text-align: center;
+        }
+        .signup-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 0.75rem;
+            margin-bottom: 0.9rem;
+            font-size: 1rem;
+        }
+        .signup-input:focus {
+            outline: none;
+            border-color: #F97316;
+            box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
+        }
+        .signup-btn {
+            width: 100%;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #F97316, #EA580C);
+            color: white;
+            font-weight: 700;
+            border-radius: 0.75rem;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .signup-btn:hover { opacity: 0.95; }
+        .error-msg {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+        .success-msg {
+            color: #059669;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="signup-container">
+        <div class="signup-box">
+            <h2 class="text-xl font-extrabold text-slate-900">Tripset Sign Up</h2>
+            <p class="text-sm text-slate-500 mt-1 mb-5">Create your account</p>
+
+            <input id="name" type="text" class="signup-input" placeholder="Name" required>
+            <input id="mobileNumber" type="text" inputmode="numeric" class="signup-input" placeholder="Mobile Number" required>
+            <input id="vehicleNumber" type="text" class="signup-input" placeholder="Vehicle Number" required>
+            <input id="email" type="email" class="signup-input" placeholder="Email ID" required>
+            <input id="password" type="password" autocomplete="new-password" class="signup-input" placeholder="Password" required>
+            <input id="confirmPassword" type="password" autocomplete="new-password" class="signup-input" placeholder="Confirm Password" required>
+
+            <button id="signupSubmitBtn" type="button" class="signup-btn" onclick="doSignup()">Sign Up</button>
+            <p id="errorMsg" class="error-msg"></p>
+            <p id="successMsg" class="success-msg"></p>
+            <p id="signupDisabledMsg" class="error-msg" style="margin-top:0.75rem;"></p>
+            <a href="/login" class="block text-sm font-bold text-orange-600 mt-3 hover:text-orange-700">Already registered? Login</a>
+        </div>
+    </div>
+    <script>
+        function normalizeMobile(raw) {
+            var digits = String(raw || '').replace(/\\D+/g, '');
+            if (digits.length === 12 && digits.slice(0, 2) === '91') return digits.slice(2);
+            return digits;
+        }
+        function normalizeVehicle(raw) {
+            return String(raw || '').trim().replace(/\\s+/g, '').toUpperCase();
+        }
+        function showError(msg) {
+            var err = document.getElementById('errorMsg');
+            var ok = document.getElementById('successMsg');
+            ok.style.display = 'none';
+            err.textContent = msg;
+            err.style.display = 'block';
+        }
+        function showSuccess(msg) {
+            var err = document.getElementById('errorMsg');
+            var ok = document.getElementById('successMsg');
+            err.style.display = 'none';
+            ok.textContent = msg;
+            ok.style.display = 'block';
+        }
+        async function loadPublicConfig() {
+            try {
+                var res = await fetch('/api/public/config', { cache: 'no-store' });
+                if (!res.ok) return;
+                var cfg = await res.json();
+                var enabled = !(cfg && cfg.features && cfg.features.signupEnabled === false);
+                var btn = document.getElementById('signupSubmitBtn');
+                var msg = document.getElementById('signupDisabledMsg');
+                ['name', 'mobileNumber', 'vehicleNumber', 'email', 'password', 'confirmPassword'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.disabled = !enabled;
+                });
+                if (btn) {
+                    btn.disabled = !enabled;
+                    btn.style.opacity = enabled ? '1' : '0.6';
+                    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+                }
+                if (msg) {
+                    if (enabled) {
+                        msg.style.display = 'none';
+                        msg.textContent = '';
+                    } else {
+                        msg.style.display = 'block';
+                        msg.textContent = 'Signup is currently disabled by admin';
+                    }
+                }
+            } catch (e) {}
+        }
+        async function doSignup() {
+            var submitBtn = document.getElementById('signupSubmitBtn');
+            if (submitBtn && submitBtn.disabled) {
+                showError('Signup is currently disabled by admin');
+                return;
+            }
+            var name = (document.getElementById('name').value || '').trim();
+            var mobileNumber = normalizeMobile(document.getElementById('mobileNumber').value);
+            var vehicleNumber = normalizeVehicle(document.getElementById('vehicleNumber').value);
+            var email = (document.getElementById('email').value || '').trim().toLowerCase();
+            var password = String(document.getElementById('password').value || '').trim();
+            var confirmPassword = String(document.getElementById('confirmPassword').value || '').trim();
+
+            if (!name || !mobileNumber || !vehicleNumber || !email || !password || !confirmPassword) {
+                showError('All fields are required');
+                return;
+            }
+            if (name.length < 2) {
+                showError('Name must be at least 2 characters');
+                return;
+            }
+            if (!/^\\d{10}$/.test(mobileNumber)) {
+                showError('Mobile number must be exactly 10 digits');
+                return;
+            }
+            if (!/^[A-Z0-9-]{6,20}$/.test(vehicleNumber)) {
+                showError('Vehicle number is invalid');
+                return;
+            }
+            if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)) {
+                showError('Email ID is invalid');
+                return;
+            }
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters');
+                return;
+            }
+            if (password !== confirmPassword) {
+                showError('Password and confirm password do not match');
+                return;
+            }
+
+            try {
+                var res = await fetch('/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        name: name,
+                        mobileNumber: mobileNumber,
+                        vehicleNumber: vehicleNumber,
+                        email: email,
+                        password: password,
+                        confirmPassword: confirmPassword
+                    })
+                });
+
+                if (!res.ok) {
+                    var message = 'Signup failed';
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) message = String(errData.error);
+                    } catch (e) {}
+                    showError(message);
+                    return;
+                }
+
+                showSuccess('Signup successful. Redirecting to login...');
+                setTimeout(function() { window.location.href = '/login'; }, 900);
+            } catch (e) {
+                showError('Signup failed');
+            }
+        }
+
+        ['confirmPassword', 'password', 'email', 'vehicleNumber', 'mobileNumber', 'name'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') doSignup();
+            });
+        });
+        loadPublicConfig();
+    </script>
+</body>
+</html>
+        `;
+        res.send(pageHtml);
+    });
+
+    app.get('/admin/login', (req, res) => {
+        if (resolveAdminSession(req)) {
+            return res.redirect(302, '/admin');
+        }
+        const csp = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com data:",
+            "img-src 'self' data: blob:",
+            "connect-src 'self' http://localhost:3000"
+        ].join('; ');
+        res.setHeader('Content-Security-Policy', csp);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const pageHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Tripset</title>
+    <link rel="manifest" href="/manifest.json?v=${PWA_ASSET_VERSION}" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <link rel="shortcut icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --admin-ink: #e2e8f0;
+            --admin-bg: #050816;
+            --admin-panel: rgba(15, 23, 42, 0.84);
+            --admin-accent: #f97316;
+            --admin-border: rgba(148, 163, 184, 0.16);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--admin-ink);
+            background:
+                radial-gradient(circle at top left, rgba(249, 115, 22, 0.32), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.24), transparent 28%),
+                linear-gradient(135deg, #020617 0%, #0f172a 45%, #111827 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.25rem;
+        }
+        .admin-auth-shell {
+            width: min(100%, 1020px);
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            border: 1px solid var(--admin-border);
+            border-radius: 28px;
+            overflow: hidden;
+            background: rgba(2, 6, 23, 0.6);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+        }
+        .admin-auth-brand {
+            padding: 3rem;
+            background:
+                linear-gradient(180deg, rgba(249, 115, 22, 0.08), transparent 48%),
+                linear-gradient(140deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.96));
+            position: relative;
+        }
+        .admin-auth-brand::after {
+            content: '';
+            position: absolute;
+            inset: auto -5rem -5rem auto;
+            width: 240px;
+            height: 240px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(249, 115, 22, 0.28), transparent 68%);
+        }
+        .admin-auth-panel {
+            padding: 2.5rem 2rem;
+            background: var(--admin-panel);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .admin-brand-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.85rem;
+            border-radius: 999px;
+            border: 1px solid rgba(249, 115, 22, 0.28);
+            background: rgba(249, 115, 22, 0.12);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #fdba74;
+        }
+        .admin-brand-title,
+        .admin-form-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+        }
+        .admin-brand-title {
+            font-size: clamp(2.6rem, 5vw, 4.4rem);
+            line-height: 0.98;
+            margin: 1.5rem 0 1rem;
+        }
+        .admin-brand-copy {
+            max-width: 30rem;
+            color: #cbd5e1;
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+        .admin-metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.9rem;
+            margin-top: 2rem;
+        }
+        .admin-metric-card {
+            padding: 1rem 1.1rem;
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.44);
+        }
+        .admin-metric-card span {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+        .admin-metric-card strong {
+            display: block;
+            margin-top: 0.5rem;
+            font-size: 1.35rem;
+            color: #f8fafc;
+        }
+        .admin-form-title {
+            font-size: 1.9rem;
+            color: #f8fafc;
+            margin: 0 0 0.35rem;
+        }
+        .admin-form-copy {
+            margin: 0 0 1.4rem;
+            color: #94a3b8;
+            font-size: 0.95rem;
+        }
+        .admin-input {
+            width: 100%;
+            padding: 0.95rem 1rem;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(15, 23, 42, 0.82);
+            color: #f8fafc;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+        .admin-input:focus {
+            border-color: rgba(249, 115, 22, 0.75);
+            transform: translateY(-1px);
+        }
+        .admin-input::placeholder { color: #64748b; }
+        .admin-submit {
+            width: 100%;
+            border: none;
+            cursor: pointer;
+            padding: 0.95rem 1rem;
+            border-radius: 16px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f97316, #fb923c);
+            color: #fff7ed;
+            font-size: 1rem;
+            box-shadow: 0 18px 40px rgba(249, 115, 22, 0.25);
+        }
+        .admin-submit:hover { filter: brightness(1.04); }
+        .admin-error {
+            display: none;
+            margin-top: 1rem;
+            padding: 0.9rem 1rem;
+            border-radius: 14px;
+            border: 1px solid rgba(248, 113, 113, 0.32);
+            background: rgba(127, 29, 29, 0.35);
+            color: #fecaca;
+            font-size: 0.92rem;
+            font-weight: 600;
+        }
+        @media (max-width: 860px) {
+            .admin-auth-shell {
+                grid-template-columns: 1fr;
+            }
+            .admin-auth-brand,
+            .admin-auth-panel {
+                padding: 1.6rem;
+            }
+            .admin-brand-title {
+                font-size: 2.45rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-auth-shell">
+        <section class="admin-auth-brand">
+            <div class="admin-brand-kicker">Tripset Control</div>
+            <h1 class="admin-brand-title">Admin panel for system-wide Tripset control.</h1>
+            <p class="admin-brand-copy">
+                Review users, monitor companies, inspect trip activity, and export operating reports from one protected workspace.
+            </p>
+            <div class="admin-metric-grid">
+                <div class="admin-metric-card">
+                    <span>Admin Scope</span>
+                    <strong>Users + Reports</strong>
+                </div>
+                <div class="admin-metric-card">
+                    <span>Security</span>
+                    <strong>Separate Auth</strong>
+                </div>
+                <div class="admin-metric-card">
+                    <span>Visibility</span>
+                    <strong>All Trips</strong>
+                </div>
+                <div class="admin-metric-card">
+                    <span>Action</span>
+                    <strong>Edit / Block / Delete</strong>
+                </div>
+            </div>
+        </section>
+        <section class="admin-auth-panel">
+            <h2 class="admin-form-title">Admin Login</h2>
+            <p class="admin-form-copy">Only admin credentials are accepted here. Normal user accounts continue to use the standard login page.</p>
+            <div class="space-y-4">
+                <input id="adminUsername" class="admin-input" type="text" autocomplete="username" placeholder="Admin username">
+                <input id="adminPassword" class="admin-input" type="password" autocomplete="current-password" placeholder="Admin password">
+                <button type="button" class="admin-submit" onclick="doAdminLogin()">Access Admin Panel</button>
+                <div id="adminError" class="admin-error"></div>
+            </div>
+        </section>
+    </div>
+    <script>
+        function showAdminError(message) {
+            var error = document.getElementById('adminError');
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+        async function doAdminLogin() {
+            var username = String(document.getElementById('adminUsername').value || '').trim();
+            var password = String(document.getElementById('adminPassword').value || '').trim();
+            if (!username || !password) {
+                showAdminError('Enter admin username and password');
+                return;
+            }
+            try {
+                var res = await fetch('/admin/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                if (!res.ok) {
+                    var message = 'Admin login failed';
+                    try {
+                        var err = await res.json();
+                        if (err && err.error) message = String(err.error);
+                    } catch (parseErr) {}
+                    showAdminError(message);
+                    return;
+                }
+                window.location.href = '/admin';
+            } catch (err) {
+                showAdminError('Admin login failed');
+            }
+        }
+        ['adminUsername', 'adminPassword'].forEach(function(id) {
+            var el = document.getElementById(id);
+            el.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') doAdminLogin();
+            });
+        });
+    </script>
+</body>
+</html>
+        `;
+        res.send(pageHtml);
+    });
+
+    app.get('/admin', requireAdminPageAuth, (req, res) => {
+        const csp = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com data:",
+            "img-src 'self' data: blob:",
+            "connect-src 'self' http://localhost:3000 https://cdn.jsdelivr.net https://cdnjs.cloudflare.com"
+        ].join('; ');
+        res.setHeader('Content-Security-Policy', csp);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const pageHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tripset Admin Panel</title>
+    <link rel="manifest" href="/manifest.json?v=${PWA_ASSET_VERSION}" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=${PWA_ASSET_VERSION}">
+    <meta name="theme-color" content="#020617">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="/admin-panel.css?v=${PWA_ASSET_VERSION}">
+</head>
+<body class="min-h-screen">
+    <div id="adminSidebarOverlay" class="hidden fixed inset-0 bg-slate-950/70 z-40 lg:hidden" onclick="window.toggleAdminSidebar(false)"></div>
+    <div class="min-h-screen lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside id="adminSidebar" class="admin-sidebar fixed inset-y-0 left-0 z-50 w-[280px] border-r border-slate-800 bg-slate-950/95 p-4 backdrop-blur lg:static lg:translate-x-0">
+            <div class="admin-card rounded-3xl p-5">
+                <div class="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Tripset Admin</div>
+                <h1 class="admin-title mt-2 text-3xl text-white">Control Room</h1>
+                <p class="mt-3 text-sm leading-6 text-slate-400">Separate admin workspace for users, companies, entries, reports, and system activity.</p>
+            </div>
+            <nav class="mt-5 flex flex-col gap-2">
+                <button class="admin-sidebar-btn active rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="dashboard" onclick="window.setAdminSection('dashboard')">Dashboard</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="users" onclick="window.setAdminSection('users')">Users</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="companies" onclick="window.setAdminSection('companies')">Companies</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="entries" onclick="window.setAdminSection('entries')">Entries</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="reports" onclick="window.setAdminSection('reports')">Reports</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="announcements" onclick="window.setAdminSection('announcements')">Announcements</button>
+                <button class="admin-sidebar-btn rounded-2xl border border-transparent px-4 py-3 text-left font-bold text-slate-200" data-section-btn="settings" onclick="window.setAdminSection('settings')">Settings</button>
+            </nav>
+            <div class="admin-card mt-5 rounded-3xl p-5">
+                <div class="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Signed in as</div>
+                <div id="adminSessionUser" class="mt-2 text-lg font-black text-white"></div>
+                <div class="mt-4 flex flex-col gap-2 no-pdf">
+                    <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.refreshAdminData()">Refresh Data</button>
+                    <button type="button" class="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 font-bold text-rose-200" onclick="window.logoutAdmin()">Logout</button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="p-4 lg:p-6">
+            <header class="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" class="no-pdf rounded-2xl border border-slate-700 px-4 py-2 font-bold text-slate-200 lg:hidden" onclick="window.toggleAdminSidebar(true)">Menu</button>
+                        <span class="admin-badge admin-badge-orange">Admin-only route</span>
+                    </div>
+                    <h2 class="admin-title mt-3 text-4xl text-white">Tripset Admin Panel</h2>
+                    <p class="mt-2 text-slate-400">Overview, moderation, and export tools for the full Tripset system.</p>
+                    <div class="mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+                        <input id="adminGlobalSearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none md:min-w-[320px]" placeholder="Global search: user, company, vehicle, mobile, trip">
+                        <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200 no-pdf" onclick="window.runAdminGlobalSearch()">Run Global Search</button>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2 no-pdf">
+                    <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.refreshAdminData()">Refresh</button>
+                    <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.setAdminSection('reports')">Open Reports</button>
+                </div>
+            </header>
+
+            <section id="admin-section-dashboard" class="admin-section active">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Total Users</div><div id="adminTotalUsers" class="mt-3 text-4xl font-black text-white">0</div></div>
+                    <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Total Companies</div><div id="adminTotalCompanies" class="mt-3 text-4xl font-black text-white">0</div></div>
+                    <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Total Entries</div><div id="adminTotalEntries" class="mt-3 text-4xl font-black text-white">0</div></div>
+                    <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Total Trips</div><div id="adminTotalTrips" class="mt-3 text-4xl font-black text-white">0</div></div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Entries Per Day</h3>
+                        <p class="mt-2 text-sm text-slate-400">Daily trip entry volume across all Tripset users.</p>
+                        <div class="mt-4"><canvas id="adminEntriesChart" height="150"></canvas></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Top Users</h3>
+                        <p class="mt-2 text-sm text-slate-400">Most active users by total entries.</p>
+                        <div class="mt-4"><canvas id="adminUsersChart" height="150"></canvas></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Recent Activity</h3>
+                        <p class="mt-2 text-sm text-slate-400">Latest tracked events across the system.</p>
+                        <div id="adminDashboardActivity" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Most Active Users</h3>
+                        <p class="mt-2 text-sm text-slate-400">Quick ranking by entry volume.</p>
+                        <div id="adminDashboardTopUsers" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr]">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Daily Active Users</h3>
+                        <p class="mt-2 text-sm text-slate-400">Users who logged in during each of the last 14 days.</p>
+                        <div class="mt-4"><canvas id="adminDauChart" height="150"></canvas></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Monthly System Growth</h3>
+                        <p class="mt-2 text-sm text-slate-400">New registered users added each month.</p>
+                        <div class="mt-4"><canvas id="adminGrowthChart" height="150"></canvas></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="admin-title text-2xl text-white">Notifications</h3>
+                                <p class="mt-2 text-sm text-slate-400">Important system events for admin review.</p>
+                            </div>
+                            <button type="button" class="no-pdf rounded-2xl border border-slate-700 px-4 py-2 font-bold text-slate-200" onclick="window.markAllNotificationsRead()">Mark all read</button>
+                        </div>
+                        <div id="adminNotificationsList" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-users" class="admin-section">
+                <div class="admin-card rounded-3xl p-5">
+                    <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                            <h3 class="admin-title text-2xl text-white">User Management</h3>
+                            <p class="mt-2 text-sm text-slate-400">Search, inspect, edit, block, or delete registered dynamic users.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 no-pdf">
+                            <input id="adminUserSearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Search by name, mobile, email, company">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminUsers()">Search</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="admin-table w-full min-w-[980px] border-collapse">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Mobile</th>
+                                    <th>Vehicle</th>
+                                    <th>Email</th>
+                                    <th>Companies</th>
+                                    <th>Entries</th>
+                                    <th>Status</th>
+                                    <th class="no-pdf">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminUsersTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-companies" class="admin-section">
+                <div class="admin-card rounded-3xl p-5">
+                    <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                            <h3 class="admin-title text-2xl text-white">Company Management</h3>
+                            <p class="mt-2 text-sm text-slate-400">View the company list, owner, rate, and edit or reset company details.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 no-pdf">
+                            <input id="adminCompanySearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Search company or owner">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminCompanies()">Search</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="admin-table w-full min-w-[860px] border-collapse">
+                            <thead>
+                                <tr>
+                                    <th>Company</th>
+                                    <th>Owner</th>
+                                    <th>Rate</th>
+                                    <th>Entries</th>
+                                    <th>Type</th>
+                                    <th class="no-pdf">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminCompaniesTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-entries" class="admin-section">
+                <div class="admin-card rounded-3xl p-5">
+                    <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                            <h3 class="admin-title text-2xl text-white">Entry Monitoring</h3>
+                            <p class="mt-2 text-sm text-slate-400">Filter entries by user or date and remove incorrect trip records.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 no-pdf">
+                            <select id="adminEntryUserFilter" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></select>
+                            <select id="adminEntryCompanyFilter" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></select>
+                            <input id="adminEntrySearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Filter by user, company, vehicle, route">
+                            <input id="adminEntryFrom" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                            <input id="adminEntryTo" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminEntries()">Apply</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="admin-table w-full min-w-[1100px] border-collapse">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Trip ID</th>
+                                    <th>User</th>
+                                    <th>Company</th>
+                                    <th>Route</th>
+                                    <th>KM</th>
+                                    <th>Total</th>
+                                    <th class="no-pdf">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminEntriesTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-reports" class="admin-section">
+                <div class="admin-card rounded-3xl p-5">
+                    <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between no-pdf">
+                        <div>
+                            <h3 class="admin-title text-2xl text-white">Reports and Export</h3>
+                            <p class="mt-2 text-sm text-slate-400">Generate system summary reports and export them as PDF or Excel.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.exportAdminReportPdf()">Export PDF</button>
+                            <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.exportAdminReportExcel()">Export Excel</button>
+                        </div>
+                    </div>
+                    <div id="adminReportExport">
+                        <div class="grid gap-4 md:grid-cols-3">
+                            <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Users</div><div id="adminReportUsers" class="mt-3 text-4xl font-black text-white">0</div></div>
+                            <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Entries</div><div id="adminReportEntries" class="mt-3 text-4xl font-black text-white">0</div></div>
+                            <div class="admin-card rounded-3xl p-5"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Companies</div><div id="adminReportCompanies" class="mt-3 text-4xl font-black text-white">0</div></div>
+                        </div>
+                        <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                            <div class="admin-card rounded-3xl p-5">
+                                <h3 class="admin-title text-2xl text-white">Company-wise Report</h3>
+                                <div id="adminReportCompanyWise" class="mt-4 space-y-3"></div>
+                            </div>
+                            <div class="admin-card rounded-3xl p-5">
+                                <h3 class="admin-title text-2xl text-white">User Activity Report</h3>
+                                <div id="adminReportUserActivity" class="mt-4 space-y-3"></div>
+                            </div>
+                        </div>
+                        <div class="admin-card mt-4 rounded-3xl p-5">
+                            <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                <div>
+                                    <h3 class="admin-title text-2xl text-white">User Activity Logs</h3>
+                                    <p class="mt-2 text-sm text-slate-400">User login, company creation, entry creation, and report download activity.</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2 no-pdf">
+                                    <input id="adminActivitySearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Filter by user, company, vehicle, action">
+                                    <input id="adminActivityFrom" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                    <input id="adminActivityTo" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                    <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminActivity()">Apply</button>
+                                </div>
+                            </div>
+                            <div id="adminReportActivityLogs" class="mt-4 space-y-3"></div>
+                        </div>
+                        <div class="admin-card mt-4 rounded-3xl p-5">
+                            <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                <div>
+                                    <h3 class="admin-title text-2xl text-white">Admin Activity Logs</h3>
+                                    <p class="mt-2 text-sm text-slate-400">Track admin actions such as user edits, password resets, company changes, and entry deletions.</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2 no-pdf">
+                                    <input id="adminAdminActivitySearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Filter by action, user, admin">
+                                    <input id="adminAdminActivityFrom" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                    <input id="adminAdminActivityTo" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                    <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminAdminActivity()">Apply</button>
+                                </div>
+                            </div>
+                            <div id="adminAdminActivityLogs" class="mt-4 space-y-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                    <div class="admin-card rounded-3xl p-5">
+                        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <h3 class="admin-title text-2xl text-white">Global Search Results</h3>
+                                <p class="mt-2 text-sm text-slate-400">Search across users, companies, vehicles, and entries from one place.</p>
+                            </div>
+                            <button type="button" class="no-pdf rounded-2xl border border-slate-700 px-4 py-2 font-bold text-slate-200" onclick="window.runAdminGlobalSearch()">Search</button>
+                        </div>
+                        <div id="adminGlobalSearchResults" class="mt-4 space-y-4"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">System Health</h3>
+                        <p class="mt-2 text-sm text-slate-400">Server uptime, database connectivity, and API responsiveness.</p>
+                        <div id="adminHealthStatus" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-3">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Security Monitor</h3>
+                        <p class="mt-2 text-sm text-slate-400">Failed logins, blocked attempts, and suspicious activity.</p>
+                        <div id="adminSecuritySummary" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Data Storage Monitor</h3>
+                        <p class="mt-2 text-sm text-slate-400">Approximate usage per user database.</p>
+                        <div id="adminStorageList" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Vehicle Performance</h3>
+                        <p class="mt-2 text-sm text-slate-400">Top vehicles ranked by trips, KM, and total amount.</p>
+                        <div id="adminVehicleStats" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Route Analytics</h3>
+                        <p class="mt-2 text-sm text-slate-400">Most-used routes, route-wise revenue, and route usage statistics.</p>
+                        <div id="adminRouteAnalytics" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Smart Profit Analytics</h3>
+                        <p class="mt-2 text-sm text-slate-400">Profit per trip, monthly profit, company profit, and overall system profit.</p>
+                        <div id="adminProfitAnalytics" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_0.95fr]">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Driver / User Leaderboard</h3>
+                        <p class="mt-2 text-sm text-slate-400">Rank users by total trips and total profit.</p>
+                        <div id="adminLeaderboard" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Data Insights Panel</h3>
+                        <p class="mt-2 text-sm text-slate-400">Peak trip hours, active users, active company, and most-used route.</p>
+                        <div id="adminInsightsPanel" class="mt-4 space-y-3"></div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 class="admin-title text-2xl text-white">Automatic Email Reports</h3>
+                                <p class="mt-2 text-sm text-slate-400">Preview daily, weekly, or monthly system summaries for admin delivery.</p>
+                            </div>
+                            <button type="button" class="no-pdf rounded-2xl border border-slate-700 px-4 py-2 font-bold text-slate-200" onclick="window.loadAdminEmailPreview()">Preview</button>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-2 no-pdf">
+                            <select id="adminEmailRange" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                            <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.sendAdminEmailReport()">Generate</button>
+                        </div>
+                        <div id="adminEmailReportPreview" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-announcements" class="admin-section">
+                <div class="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                    <div class="admin-card rounded-3xl p-5">
+                        <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                            <div>
+                                <h3 class="admin-title text-2xl text-white">Announcements / Notices</h3>
+                                <p class="mt-2 text-sm text-slate-400">Create targeted multilingual notices for all users, selected users, or selected company users.</p>
+                            </div>
+                            <span class="admin-badge admin-badge-orange">User-facing notices</span>
+                        </div>
+                        <div class="mt-5 space-y-4">
+                            <input id="announcementTitle" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Announcement title">
+                            <textarea id="announcementMessage" class="min-h-[120px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Default announcement message"></textarea>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Language</label>
+                                    <select id="announcementLanguage" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                        <option value="en">English</option>
+                                        <option value="gu">Gujarati</option>
+                                        <option value="hi">Hindi</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Target Users</label>
+                                    <select id="announcementTargetType" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" onchange="window.handleAnnouncementTargetChange()">
+                                        <option value="all">All Users</option>
+                                        <option value="selected_users">Selected Users</option>
+                                        <option value="selected_company_users">Selected Company Users</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Start Date / Time</label>
+                                    <input id="announcementStartsAt" type="datetime-local" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">End Date / Time</label>
+                                    <input id="announcementExpiresAt" type="datetime-local" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                </div>
+                            </div>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Status</label>
+                                    <select id="announcementStatus" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                        <option value="active">Active</option>
+                                        <option value="expired">Expired</option>
+                                    </select>
+                                </div>
+                                <label class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3 mt-7"><input id="announcementActive" type="checkbox" checked class="h-5 w-5 accent-orange-500"><span class="font-bold text-slate-200">Visible to users</span></label>
+                            </div>
+                            <div id="announcementUserSelectorWrap" class="hidden">
+                                <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Selected Users</label>
+                                <select id="announcementTargetUsers" multiple class="min-h-[160px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></select>
+                            </div>
+                            <div id="announcementCompanySelectorWrap" class="hidden">
+                                <label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Selected Company Users</label>
+                                <select id="announcementTargetCompanies" multiple class="min-h-[160px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></select>
+                            </div>
+                            <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                                <div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Optional Translations</div>
+                                <div class="mt-4 grid gap-4 md:grid-cols-3">
+                                    <div class="space-y-2">
+                                        <div class="text-sm font-bold text-slate-200">English</div>
+                                        <input id="announcementTitleEn" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="English title">
+                                        <textarea id="announcementMessageEn" class="min-h-[120px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="English message"></textarea>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="text-sm font-bold text-slate-200">Gujarati</div>
+                                        <input id="announcementTitleGu" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="Gujarati title">
+                                        <textarea id="announcementMessageGu" class="min-h-[120px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="Gujarati message"></textarea>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="text-sm font-bold text-slate-200">Hindi</div>
+                                        <input id="announcementTitleHi" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="Hindi title">
+                                        <textarea id="announcementMessageHi" class="min-h-[120px] w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none" placeholder="Hindi message"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <input id="announcementId" type="hidden">
+                            <div class="flex flex-wrap gap-2 no-pdf">
+                                <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.saveAnnouncement()">Save Announcement</button>
+                                <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.resetAnnouncementForm()">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Announcement History</h3>
+                        <p class="mt-2 text-sm text-slate-400">View active, expired, and targeted notices with their delivery settings.</p>
+                        <div id="adminAnnouncementsList" class="mt-5 space-y-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="admin-section-settings" class="admin-section">
+                <div class="grid gap-4 xl:grid-cols-2">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Admin Session</h3>
+                        <p class="mt-2 text-sm text-slate-400">Admin authentication stays separate from normal user login.</p>
+                        <div class="mt-5 space-y-3">
+                            <div class="admin-badge admin-badge-orange">Protected admin routes</div>
+                            <div class="admin-badge admin-badge-slate">Current admin: <span id="adminSettingsUser" class="ml-1">admin</span></div>
+                            <div class="admin-badge admin-badge-emerald">User system remains unchanged</div>
+                        </div>
+                        <div class="mt-6 flex flex-wrap gap-2 no-pdf">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.refreshAdminData()">Refresh Admin Data</button>
+                            <button type="button" class="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 font-bold text-rose-200" onclick="window.logoutAdmin()">Logout Admin</button>
+                        </div>
+                        <div class="mt-8 border-t border-slate-800 pt-6">
+                            <h4 class="admin-title text-xl text-white">Feature Controls</h4>
+                            <p class="mt-2 text-sm text-slate-400">Enable or disable signup, maintenance mode, and user-side PDF/Excel exports.</p>
+                            <div class="mt-4 space-y-3">
+                                <label class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"><span class="font-bold text-slate-200">Enable Signup</span><input id="featureSignupToggle" type="checkbox" class="h-5 w-5 accent-orange-500"></label>
+                                <label class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"><span class="font-bold text-slate-200">Enable PDF Download</span><input id="featurePdfToggle" type="checkbox" class="h-5 w-5 accent-orange-500"></label>
+                                <label class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"><span class="font-bold text-slate-200">Enable Excel Export</span><input id="featureExcelToggle" type="checkbox" class="h-5 w-5 accent-orange-500"></label>
+                                <label class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"><span class="font-bold text-slate-200">Enable Maintenance Mode</span><input id="featureMaintenanceToggle" type="checkbox" class="h-5 w-5 accent-orange-500"></label>
+                            </div>
+                            <div class="mt-4 no-pdf">
+                                <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.saveAdminFeatures()">Save Feature Controls</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">System Controls</h3>
+                        <p class="mt-2 text-sm text-slate-400">Quick visibility into maintenance state, health, and security counters.</p>
+                        <div id="adminSettingsSnapshot" class="mt-5 space-y-3"></div>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-4 xl:grid-cols-2">
+                    <div class="admin-card rounded-3xl p-5">
+                        <h3 class="admin-title text-2xl text-white">Backup and Restore</h3>
+                        <p class="mt-2 text-sm text-slate-400">Create a full system backup or restore from a previously exported JSON file.</p>
+                        <div class="mt-4 flex flex-col gap-3 no-pdf">
+                            <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.downloadAdminBackup()">Download Full Backup</button>
+                            <input id="adminBackupFile" type="file" accept=".json,application/json" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.restoreAdminBackup()">Restore Backup</button>
+                        </div>
+                    </div>
+                    <div class="admin-card rounded-3xl p-5">
+                        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div>
+                                <h3 class="admin-title text-2xl text-white">System Error Logs</h3>
+                                <p class="mt-2 text-sm text-slate-400">API errors, database errors, and login failures recorded by the system.</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2 no-pdf">
+                                <input id="adminErrorSearch" type="search" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none" placeholder="Filter by source or message">
+                                <input id="adminErrorFrom" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                <input id="adminErrorTo" type="date" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none">
+                                <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.loadAdminErrors()">Apply</button>
+                            </div>
+                        </div>
+                        <div id="adminErrorLogs" class="mt-4 space-y-3"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="adminToast" class="admin-toast fixed bottom-4 right-4 z-[80] rounded-2xl border border-orange-400/20 bg-slate-950/95 px-5 py-4 font-bold text-white shadow-2xl"></div>
+
+    <div id="adminUserModal" class="admin-modal fixed inset-0 z-[90] items-center justify-center bg-slate-950/70 p-4">
+        <div class="admin-card w-full max-w-4xl rounded-3xl p-5">
+            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                    <h3 class="admin-title text-3xl text-white">User Details</h3>
+                    <p id="adminUserModalCopy" class="mt-2 text-sm text-slate-400">View and edit account information.</p>
+                </div>
+                <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200 no-pdf" onclick="window.closeAdminUserModal()">Close</button>
+            </div>
+            <div class="mt-5 grid gap-4 md:grid-cols-2">
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Name</label><input id="adminUserName" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Mobile Number</label><input id="adminUserMobile" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Vehicle Number</label><input id="adminUserVehicle" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Email</label><input id="adminUserEmail" type="email" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+            </div>
+            <div class="mt-4 grid gap-4 md:grid-cols-3">
+                <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Companies</div><div id="adminUserCompanyCount" class="mt-3 text-3xl font-black text-white">0</div></div>
+                <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Entries</div><div id="adminUserEntryCount" class="mt-3 text-3xl font-black text-white">0</div></div>
+                <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4"><div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Status</div><div id="adminUserStatusText" class="mt-3 text-2xl font-black text-white">Active</div></div>
+            </div>
+            <div class="mt-5">
+                <div class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Recent Entries</div>
+                <div id="adminUserRecentEntries" class="mt-3 space-y-3"></div>
+            </div>
+            <div class="mt-5 flex justify-end gap-2 no-pdf">
+                <button id="adminUserResetPasswordBtn" type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200" onclick="window.resetAdminUserPassword()">Reset Password</button>
+                <button id="adminUserSaveBtn" type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.saveAdminUser()">Save User</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminCompanyModal" class="admin-modal fixed inset-0 z-[90] items-center justify-center bg-slate-950/70 p-4">
+        <div class="admin-card w-full max-w-2xl rounded-3xl p-5">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="admin-title text-3xl text-white">Company Details</h3>
+                    <p class="mt-2 text-sm text-slate-400">Update company name and rate.</p>
+                </div>
+                <button type="button" class="rounded-2xl border border-slate-700 px-4 py-3 font-bold text-slate-200 no-pdf" onclick="window.closeAdminCompanyModal()">Close</button>
+            </div>
+            <div class="mt-5 grid gap-4 md:grid-cols-2">
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Company Name</label><input id="adminCompanyName" type="text" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+                <div><label class="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-400">Rate</label><input id="adminCompanyRate" type="number" min="0" step="0.01" class="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none"></div>
+            </div>
+            <div class="mt-5 flex justify-end gap-2 no-pdf">
+                <button type="button" class="rounded-2xl bg-orange-500 px-4 py-3 font-bold text-white" onclick="window.saveAdminCompany()">Save Company</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin-panel.js?v=${PWA_ASSET_VERSION}"></script>
+</body>
+</html>
+        `;
+        res.send(pageHtml);
+    });
+
     // Login page
     app.get('/login', (req, res) => {
         if (req.session && req.session.isAuthenticated) {
@@ -903,9 +4773,10 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
             <h2 class="login-title">Tripset</h2>
             <p class="login-subtitle">Login required</p>
             <input id="username" type="text" inputmode="numeric" autocomplete="username" class="login-input" placeholder="Mobile number">
-            <input id="password" type="password" inputmode="numeric" autocomplete="current-password" class="login-input" placeholder="Password">
+            <input id="password" type="password" autocomplete="current-password" class="login-input" placeholder="Password">
             <button type="button" class="login-btn" onclick="doLogin()">Login</button>
             <p id="errorMsg" class="error-msg"></p>
+            <a id="loginSignupLink" href="/signup" class="block text-sm font-bold text-orange-600 mt-3 hover:text-orange-700">New user? Sign up</a>
             <p class="text-xs text-slate-500 mt-4">Authorized user only</p>
         </div>
     </div>
@@ -928,11 +4799,16 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
                 var res = await fetch('/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include', // Include cookies for session
+                    credentials: 'include',
                     body: JSON.stringify({ username: username, password: password })
                 });
                 if (!res.ok) {
-                    showError('Invalid login');
+                    var message = 'Invalid login';
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) message = String(errData.error);
+                    } catch (e) {}
+                    showError(message);
                     return;
                 }
                 p.value = '';
@@ -941,12 +4817,30 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
                 showError('Login failed');
             }
         }
+        async function syncSignupAvailability() {
+            try {
+                var res = await fetch('/api/public/config', { cache: 'no-store' });
+                if (!res.ok) return;
+                var cfg = await res.json();
+                if (cfg && cfg.features && cfg.features.signupEnabled === false) {
+                    var link = document.getElementById('loginSignupLink');
+                    if (link) {
+                        link.textContent = 'Signup currently disabled';
+                        link.removeAttribute('href');
+                        link.style.opacity = '0.65';
+                        link.style.cursor = 'default';
+                        link.style.pointerEvents = 'none';
+                    }
+                }
+            } catch (e) {}
+        }
         document.getElementById('password').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') doLogin();
         });
         document.getElementById('username').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') doLogin();
         });
+        syncSignupAvailability();
     </script>
 </body>
 </html>
@@ -1209,25 +5103,6 @@ body.dark .input-field::placeholder {
     color: #64748b;
 }
 
-    /* PIN Lock Screen (after login) */
-    body > #pinLockScreen {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        z-index: 2147483645 !important;
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-        align-items: center;
-        justify-content: center;
-        padding: 1rem;
-    }
-    #pinLockScreen.hidden { display: none !important; visibility: hidden !important; }
     #appContent { display: none !important; visibility: hidden !important; }
 
     /* Login Screen (single-user) - SHOW BY DEFAULT */
@@ -1262,70 +5137,6 @@ body.dark .input-field::placeholder {
         visibility: visible !important;
         opacity: 1 !important;
     }
-    .pin-lock-modal {
-        background: white;
-        border-radius: 1.5rem;
-        padding: 2rem 2.5rem;
-        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
-        max-width: 22rem;
-        width: 100%;
-        text-align: center;
-    }
-    body.dark .pin-lock-modal {
-        background: #0f172a;
-        border: 1px solid #1e293b;
-    }
-    .pin-lock-title {
-        font-size: 1.25rem;
-        font-weight: 800;
-        color: #0f172a;
-        margin-bottom: 0.5rem;
-    }
-    body.dark .pin-lock-title { color: #f1f5f9; }
-    .pin-lock-subtitle {
-        font-size: 0.875rem;
-        color: #64748b;
-        margin-bottom: 1.5rem;
-    }
-    .pin-input {
-        width: 100%;
-        font-size: 1.5rem;
-        letter-spacing: 0.5em;
-        text-align: center;
-        padding: 0.75rem 1rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 0.75rem;
-        margin-bottom: 1rem;
-    }
-    .pin-input:focus {
-        outline: none;
-        border-color: #F97316;
-        box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
-    }
-    .pin-input.error { border-color: #ef4444; }
-    @keyframes pinShake {
-        0%, 100% { transform: translateX(0); }
-        20% { transform: translateX(-8px); }
-        40% { transform: translateX(8px); }
-        60% { transform: translateX(-6px); }
-        80% { transform: translateX(6px); }
-    }
-    .pin-shake { animation: pinShake 0.4s ease-in-out; }
-    .btn-unlock {
-        width: 100%;
-        padding: 0.75rem 1.5rem;
-        background: linear-gradient(135deg, #F97316, #EA580C);
-        color: white;
-        font-weight: 700;
-        border-radius: 0.75rem;
-        border: none;
-        cursor: pointer;
-        font-size: 1rem;
-    }
-    .btn-unlock:hover { opacity: 0.95; }
-    .pin-set-form .pin-row { margin-bottom: 1rem; }
-    #changePinModal .input-field { margin-bottom: 0.75rem; }
-
     /* Splash Screen */
     #splashScreen {
         position: fixed;
@@ -1509,14 +5320,15 @@ body.dark .input-field::placeholder {
             </div>
         </div>
 
-        <!-- Login Screen (hardcoded single-user) - VISIBLE BY DEFAULT WITH INLINE STYLES -->
+        <!-- Login Screen -->
         <div id="loginScreen" style="position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;z-index:2147483646 !important;display:flex !important;visibility:visible !important;opacity:1 !important;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%) !important;align-items:center !important;justify-content:center !important;padding:1rem !important;">
             <div style="background:white;border-radius:1.5rem;padding:2rem 2.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,0.4);max-width:22rem;width:100%;text-align:center;">
                 <h2 style="font-size:1.25rem;font-weight:800;color:#0f172a;margin-bottom:0.5rem;">Tripset</h2>
                 <p style="font-size:0.875rem;color:#64748b;margin-bottom:1.5rem;" data-i18n="login.required">Login required</p>
                 <input id="loginUsername" type="text" inputmode="numeric" autocomplete="username" placeholder="Mobile number" data-i18n-placeholder="login.username" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
-                <input id="loginPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="login.password" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="login.password" style="width:100%;padding:0.75rem 1rem;border:2px solid #e2e8f0;border-radius:0.75rem;margin-bottom:1rem;font-size:1rem;box-sizing:border-box;">
                 <button type="button" onclick="window.doLogin()" style="width:100%;padding:0.75rem 1.5rem;background:linear-gradient(135deg,#F97316,#EA580C);color:white;font-weight:700;border-radius:0.75rem;border:none;cursor:pointer;font-size:1rem;" data-i18n="login.button">Login</button>
+                <a href="/signup" style="display:block;margin-top:0.7rem;font-size:0.875rem;font-weight:700;color:#ea580c;">New user? Sign up</a>
                 <p style="font-size:0.75rem;color:#64748b;margin-top:1rem;" data-i18n="login.authorized">Authorized user only</p>
             </div>
         </div>
@@ -1545,14 +5357,6 @@ body.dark .input-field::placeholder {
                     console.log('✅ Login screen hidden (will show if not auth)');
                 }
                 
-                // Hide PIN screen
-                var pin = document.getElementById('pinLockScreen');
-                if (pin) {
-                    pin.style.setProperty('display', 'none', 'important');
-                    pin.style.setProperty('visibility', 'hidden', 'important');
-                    pin.style.setProperty('pointer-events', 'none', 'important');
-                }
-                
                 // Keep app content hidden - bootstrapAuth will show it after auth check
                 var app = document.getElementById('appContent');
                 if (app) {
@@ -1566,27 +5370,6 @@ body.dark .input-field::placeholder {
             }
         })();
         </script>
-
-        <!-- PIN Lock Screen (shown after login, via JS) -->
-        <div id="pinLockScreen" class="hidden" style="display:none !important;position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:2147483645 !important;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);align-items:center;justify-content:center;padding:1rem;">
-            <div class="pin-lock-modal" id="pinLockModal">
-                <div id="pinEnterMode">
-                    <h2 class="pin-lock-title">Tripset</h2>
-                    <p class="pin-lock-subtitle" data-i18n="pin.enterTitle">Enter 4-digit PIN</p>
-                    <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinInput" class="pin-input" placeholder="••••" autocomplete="off">
-                    <button type="button" class="btn-unlock" onclick="window.submitPin()" data-i18n="pin.unlock">Unlock</button>
-                </div>
-                <div id="pinSetMode" class="hidden">
-                    <h2 class="pin-lock-title" data-i18n="pin.setTitle">Set PIN</h2>
-                    <p class="pin-lock-subtitle" data-i18n="pin.setSubtitle">Create a 4-digit PIN to lock the app</p>
-                    <div class="pin-set-form">
-                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetInput" class="pin-input" placeholder="New PIN" data-i18n-placeholder="pin.newPin" autocomplete="off">
-                        <input type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" id="pinSetConfirm" class="pin-input" placeholder="Confirm PIN" data-i18n-placeholder="pin.confirmPin" autocomplete="off">
-                    </div>
-                    <button type="button" class="btn-unlock" onclick="window.setPin()" data-i18n="pin.setAndUnlock">Set PIN &amp; Unlock</button>
-                </div>
-            </div>
-        </div>
 
         <div id="appContent" style="display:none !important;">
         <nav class="bg-[#020617] text-white shadow-xl sticky top-0 z-50 border-b border-slate-800">
@@ -1609,6 +5392,7 @@ body.dark .input-field::placeholder {
                     <button id="btn-enter-detail" data-tab="enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive" data-i18n="nav.entryForm">Details</button>
                     <button id="btn-entries" data-tab="entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.entries">Entries</button>
                     <button id="btn-company-entries" data-tab="company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.company">Company</button>
+                    <button id="btn-notices" data-tab="notices" onclick="window.showTab('notices')" class="nav-btn nav-btn-inactive" data-i18n="nav.notices">Notices</button>
                     <button id="btn-settings" data-tab="settings" onclick="window.showTab('settings')" class="nav-btn nav-btn-inactive" data-i18n="nav.settings">Settings</button>
 
                     <button onclick="window.toggleDarkMode()" 
@@ -1636,6 +5420,7 @@ body.dark .input-field::placeholder {
                 <button data-tab="enter-detail" onclick="window.showTab('enter-detail')" class="nav-btn nav-btn-inactive" data-i18n="nav.entryForm">Details</button>
                 <button data-tab="entries" onclick="window.showTab('entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.entries">Entries</button>
                 <button data-tab="company-entries" onclick="window.showTab('company-entries')" class="nav-btn nav-btn-inactive" data-i18n="nav.company">Company</button>
+                <button data-tab="notices" onclick="window.showTab('notices')" class="nav-btn nav-btn-inactive" data-i18n="nav.notices">Notices</button>
                 <button data-tab="settings" onclick="window.showTab('settings')" class="nav-btn nav-btn-inactive" data-i18n="nav.settings">Settings</button>
                 <button onclick="window.toggleDarkMode()" class="nav-btn nav-btn-inactive">🌙</button>
             </div>
@@ -1643,6 +5428,45 @@ body.dark .input-field::placeholder {
           
 
         <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <div id="announcementPanel" class="hidden mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div class="text-xs font-black uppercase tracking-[0.14em] text-amber-700">Announcements</div>
+                <button type="button" onclick="window.openNoticeModal(true)" class="rounded-full border border-amber-300 bg-white/70 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-700">View All</button>
+            </div>
+            <div id="announcementList" class="mt-3 space-y-3"></div>
+        </div>
+        <div id="noticeModal" class="hidden fixed inset-0 z-[80] bg-slate-950/60 p-4" onclick="if(event.target===this) window.closeNoticeModal()">
+            <div class="mx-auto flex min-h-full max-w-2xl items-center justify-center">
+                <div class="w-full max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <div class="text-xs font-black uppercase tracking-[0.14em] text-amber-700">Notice Center</div>
+                            <h3 class="mt-2 text-2xl font-black text-slate-900">Announcements</h3>
+                            <p class="mt-2 text-sm font-medium text-slate-500">Active multilingual notices for your account.</p>
+                        </div>
+                        <button type="button" onclick="window.closeNoticeModal()" class="rounded-full border border-slate-200 px-4 py-2 text-sm font-black text-slate-600">Close</button>
+                    </div>
+                    <div id="noticeModalList" class="mt-5 space-y-3"></div>
+                </div>
+            </div>
+        </div>
+        <div id="notices" class="tab-content max-w-4xl mx-auto">
+            <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200">
+                <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <div class="text-xs font-black uppercase tracking-[0.14em] text-amber-700" data-i18n="notices.kicker">Notice Center</div>
+                        <h2 class="mt-2 text-2xl font-extrabold text-slate-900" data-i18n="notices.title">Announcements & Notices</h2>
+                        <p class="mt-2 text-sm font-medium text-slate-500" data-i18n="notices.subtitle">View active updates from the admin in your selected language.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="window.loadNotices(true)" class="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-black text-amber-700" data-i18n="notices.refresh">Refresh Notices</button>
+                        <button type="button" onclick="window.openNoticeModal(true)" class="rounded-full border border-slate-200 px-4 py-2 text-sm font-black text-slate-600" data-i18n="notices.popup">Open Popup</button>
+                    </div>
+                </div>
+                <div id="noticeSectionSummary" class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800"></div>
+                <div id="noticeSectionList" class="mt-5 space-y-3"></div>
+            </div>
+        </div>
         <div id="settings" class="tab-content max-w-2xl mx-auto">
     <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200">
         <h2 class="text-2xl font-extrabold mb-6 border-b pb-4 uppercase" data-i18n="settings.title">⚙ Settings</h2>
@@ -1741,10 +5565,15 @@ body.dark .input-field::placeholder {
             </div>
 
             <div class="border-t pt-6 mt-6">
-                <h3 class="text-lg font-extrabold mb-4 uppercase text-slate-700" data-i18n="settings.pinTitle">🔒 PIN Lock</h3>
-                <button onclick="window.openChangePinModal()" 
-                    class="w-full bg-slate-700 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md">
-                    <span data-i18n="settings.changePin">🔑 Change PIN</span>
+                <h3 class="text-lg font-extrabold mb-3 uppercase text-rose-700" data-i18n="settings.deleteAccountTitle">⚠ Delete Account</h3>
+                <p id="deleteAccountHint" class="text-xs text-slate-500 mb-3" data-i18n="settings.deleteAccountHint">
+                    Default login accounts cannot be deleted.
+                </p>
+                <button id="deleteAccountBtn"
+                    onclick="window.openDeleteAccountModal()"
+                    disabled
+                    class="w-full bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-md opacity-60 cursor-not-allowed">
+                    <span data-i18n="settings.deleteAccount">🗑 Delete Account</span>
                 </button>
             </div>
 
@@ -1775,7 +5604,7 @@ body.dark .input-field::placeholder {
                 </div>
 
                 <div class="mt-6">
-                    <button onclick="window.generateInvoiceFromModal()"
+                <button data-feature-control="pdf" onclick="window.generateInvoiceFromModal()"
                         class="w-full py-2.5 rounded-lg font-bold bg-orange-500 hover:bg-orange-600 text-white">
                         <span data-i18n="dashboard.generateInvoicePdf">Generate Invoice PDF</span>
                     </button>
@@ -1802,7 +5631,7 @@ body.dark .input-field::placeholder {
                     <label class="text-xs font-bold uppercase text-slate-500 block mb-1" data-i18n="invoice.selectMonth">Select Month</label>
                     <input type="month" id="invoiceMonth" class="px-3 py-2 border rounded-lg font-bold">
                 </div>
-                <button onclick="window.generateInvoice()" class="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-md">
+                <button data-feature-control="pdf" onclick="window.generateInvoice()" class="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-md">
                     <span data-i18n="dashboard.generateInvoicePdf">Generate Invoice PDF</span>
                 </button>
             </div>
@@ -1980,8 +5809,8 @@ body.dark .input-field::placeholder {
                                 class="bg-slate-700 text-white px-4 py-2 rounded-lg font-bold">
                             <span data-i18n="common.apply">Apply</span>
                         </button>
-                    <button onclick="window.downloadPDF('entries')" class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">📥 <span data-i18n="common.pdf">PDF</span></button>
-                    <button onclick="window.exportExcel()" 
+                    <button data-feature-control="pdf" onclick="window.downloadPDF('entries')" class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">📥 <span data-i18n="common.pdf">PDF</span></button>
+                    <button data-feature-control="excel" onclick="window.exportExcel()" 
 class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
 📥 <span data-i18n="common.excel">Excel</span>
 </button>
@@ -2010,23 +5839,22 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             </div>
 
             <div id="company-entries" class="tab-content bg-white rounded-2xl shadow-sm border overflow-hidden">
-                <div class="p-6 flex justify-between items-center bg-indigo-900 text-white">
-                    <h2 class="text-xl font-extrabold uppercase" data-i18n="company.title">Company Entry Report</h2>
-                    <div class="flex items-center gap-3">
-            <input type="month" id="monthFilter"
-                class="px-3 py-2 rounded-lg text-black font-bold">
-
-            <button onclick="window.applyMonthFilter()"
-                    class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">
-                <span data-i18n="common.apply">Apply</span>
-            </button>
-        </div>
-                    <button onclick="window.downloadPDF('company-entries')" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">📁 <span data-i18n="common.pdf">PDF</span></button>
-                    <button onclick="window.exportExcel()" 
-class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
-📥 <span data-i18n="common.excel">Excel</span>
-</button>
-
+                <div class="p-4 md:p-6 bg-indigo-900 text-white">
+                    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+                        <h2 class="text-xl font-extrabold uppercase" data-i18n="company.title">Company Entry Report</h2>
+                        <div class="flex items-center gap-2">
+                            <input type="month" id="monthFilter" class="px-3 py-2 rounded-lg text-black font-bold">
+                            <button onclick="window.applyMonthFilter()" class="bg-white text-indigo-900 px-4 py-2 rounded-lg font-bold">
+                                <span data-i18n="common.apply">Apply</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-3 overflow-x-auto no-scrollbar">
+                        <div class="inline-flex min-w-max items-center gap-2 pb-1">
+                            <button data-feature-control="pdf" onclick="window.downloadPDF('company-entries')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow-md">📁 <span data-i18n="common.pdf">PDF</span></button>
+                            <button data-feature-control="excel" onclick="window.exportExcel()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold shadow-md">📥 <span data-i18n="common.excel">Excel</span></button>
+                        </div>
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
@@ -2221,19 +6049,39 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
     </div>
 </div>
 
-        <!-- Change PIN Modal -->
-        <div id="changePinModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                <h2 class="text-xl font-black mb-4 text-slate-800 uppercase" data-i18n="pin.changeTitle">🔑 Change PIN</h2>
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinCurrent" class="input-field" placeholder="Current PIN" data-i18n-placeholder="pin.currentPin" autocomplete="off">
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinNew" class="input-field" placeholder="New PIN" data-i18n-placeholder="pin.newPin" autocomplete="off">
-                <input type="password" inputmode="numeric" maxlength="4" id="changePinConfirm" class="input-field" placeholder="Confirm New PIN" data-i18n-placeholder="pin.confirmNewPin" autocomplete="off">
-                <div class="flex gap-3 mt-4">
-                    <button onclick="window.closeChangePinModal()" class="flex-1 py-2 rounded-lg font-bold border border-slate-300 text-slate-700" data-i18n="common.cancel">Cancel</button>
-                    <button onclick="window.saveNewPin()" class="flex-1 py-2 rounded-lg font-bold bg-orange-500 text-white" data-i18n="pin.savePin">Save PIN</button>
+        <!-- Delete Account Modal -->
+        <div id="deleteAccountModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-rose-100">
+                <h2 class="text-xl font-black mb-2 text-rose-700 uppercase" data-i18n="settings.deleteAccountTitle">⚠ Delete Account</h2>
+                <p class="text-sm text-slate-600 mb-4" data-i18n="settings.deleteAccountWarning">
+                    This action is permanent. All your data will be deleted from the database.
+                </p>
+
+                <label class="flex items-start gap-2 p-3 rounded-lg border border-slate-200 mb-3">
+                    <input id="deleteTermsCheckbox" type="checkbox" class="mt-1 h-4 w-4">
+                    <span class="text-sm font-semibold text-slate-700" data-i18n="settings.deleteStep1">
+                        I accept Terms & Conditions and want to continue.
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-2 p-3 rounded-lg border border-rose-200 bg-rose-50">
+                    <input id="deleteFinalCheckbox" type="checkbox" class="mt-1 h-4 w-4">
+                    <span class="text-sm font-black text-rose-700">Yes, I want to delete my account</span>
+                </label>
+
+                <div class="flex gap-3 mt-5">
+                    <button onclick="window.closeDeleteAccountModal()"
+                        class="flex-1 py-2 rounded-lg font-bold border border-slate-300 text-slate-700"
+                        data-i18n="common.cancel">Cancel</button>
+                    <button id="confirmDeleteAccountBtn"
+                        onclick="window.confirmDeleteAccount()"
+                        disabled
+                        class="flex-1 py-2 rounded-lg font-bold bg-rose-600 text-white opacity-60 cursor-not-allowed">
+                        <span data-i18n="settings.deleteAccount">🗑 Delete Account</span>
+                    </button>
+                </div>
+            </div>
         </div>
-    </div>
-</div>
 
         <script>
         'use strict';
@@ -2267,8 +6115,31 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         console.log("SCRIPT LOADED ✅ (Invoice Build)");
 
         var appInitialized = false;
-        window.authProfile = { user: 'kamlesh', dbFolder: 'kamlesh', displayName: 'Kamlesh' };
+        window.authProfile = {
+            user: 'kamlesh',
+            dbFolder: 'kamlesh',
+            displayName: 'Kamlesh',
+            isDynamicUser: false,
+            canDeleteAccount: false
+        };
         window.currentUserDisplayName = 'Kamlesh';
+
+        function refreshDeleteAccountUI() {
+            var deleteBtn = document.getElementById('deleteAccountBtn');
+            var deleteHint = document.getElementById('deleteAccountHint');
+            var allowed = !!(window.authProfile && window.authProfile.canDeleteAccount);
+            if (deleteBtn) {
+                deleteBtn.disabled = !allowed;
+                if (allowed) {
+                    deleteBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                } else {
+                    deleteBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                }
+            }
+            if (deleteHint) {
+                deleteHint.style.display = allowed ? 'none' : 'block';
+            }
+        }
 
         function setAuthenticatedIdentity(status) {
             var displayName = String((status && status.displayName) || window.currentUserDisplayName || 'Kamlesh').trim() || 'Kamlesh';
@@ -2276,7 +6147,9 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             window.authProfile = {
                 user: String((status && status.user) || ''),
                 dbFolder: String((status && status.dbFolder) || ''),
-                displayName: displayName
+                displayName: displayName,
+                isDynamicUser: !!(status && status.isDynamicUser),
+                canDeleteAccount: !!(status && status.canDeleteAccount)
             };
             if (i18nResources && i18nResources.en && i18nResources.en.translation && i18nResources.en.translation.home) {
                 i18nResources.en.translation.home.welcome = 'Welcome ' + displayName;
@@ -2290,6 +6163,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             document.querySelectorAll('[data-user-display-name]').forEach(function(el) {
                 el.textContent = displayName;
             });
+            refreshDeleteAccountUI();
         }
 
         function setDisplayImportant(el, value) {
@@ -2323,22 +6197,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 document.body.style.setProperty('overflow-y', 'auto', 'important');
                 document.body.style.removeProperty('height');
             }
-        }
-
-        function normalizePinInput(pin) {
-            var raw = String(pin == null ? '' : pin).trim();
-            var out = '';
-            for (const ch of raw) {
-                var cp = ch.codePointAt(0);
-                if (cp >= 48 && cp <= 57) { out += ch; continue; } // 0-9
-                if (cp >= 0x0660 && cp <= 0x0669) { out += String(cp - 0x0660); continue; } // Arabic-Indic
-                if (cp >= 0x06F0 && cp <= 0x06F9) { out += String(cp - 0x06F0); continue; } // Extended Arabic-Indic
-                if (cp >= 0x0966 && cp <= 0x096F) { out += String(cp - 0x0966); continue; } // Devanagari
-                if (cp >= 0x09E6 && cp <= 0x09EF) { out += String(cp - 0x09E6); continue; } // Bengali
-                if (cp >= 0x0AE6 && cp <= 0x0AEF) { out += String(cp - 0x0AE6); continue; } // Gujarati
-                if (cp >= 0xFF10 && cp <= 0xFF19) { out += String(cp - 0xFF10); continue; } // Full-width
-            }
-            return out;
         }
 
         window.toggleMobileNav = function(forceOpen) {
@@ -2381,20 +6239,19 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         var i18nResources = {
             en: {
                 translation: {
-                    nav: { home: "Home", dashboard: "Dashboard", entryForm: "Details", entries: "Entries", company: "Company", settings: "Settings" },
+                    nav: { home: "Home", dashboard: "Dashboard", entryForm: "Details", entries: "Entries", company: "Company", notices: "Notices", settings: "Settings" },
                     login: { required: "Login required", username: "Mobile number", password: "Password", button: "Login", authorized: "Authorized user only" },
                     install: { title: "Install Tripset", subtitle: "Install app for better experience", install: "Install", later: "Later" },
-                    pin: {
-                        enterTitle: "Enter 4-digit PIN", unlock: "Unlock", setTitle: "Set PIN", setSubtitle: "Create a 4-digit PIN to lock the app",
-                        newPin: "New PIN", confirmPin: "Confirm PIN", setAndUnlock: "Set PIN & Unlock",
-                        changeTitle: "Change PIN", currentPin: "Current PIN", confirmNewPin: "Confirm New PIN", savePin: "Save PIN"
-                    },
                     settings: {
                         title: "Settings", companyName: "Company Name", rate: "Rate (₹ per KM)", language: "Language",
                         save: "Save Settings 💾", backupTitle: "Backup & Restore", downloadBackup: "📥 Download Backup",
                         restoreLabel: "Restore Backup (JSON File)", restoreBackup: "📤 Restore Backup",
                         invoiceTitle: "Invoice", invoiceGenerator: "🧾 Invoice Generator", invoiceHelp: "Select month and download invoice PDF.",
-                        pinTitle: "PIN Lock", changePin: "🔑 Change PIN", logout: "🚪 Logout"
+                        deleteAccountTitle: "Delete Account", deleteAccountHint: "Default login accounts cannot be deleted.",
+                        deleteAccountWarning: "This action is permanent. All your data will be deleted from the database.",
+                        deleteStep1: "I accept Terms & Conditions and want to continue.",
+                        deleteAccount: "🗑 Delete Account",
+                        logout: "🚪 Logout"
                     },
                     dashboard: {
                         invoiceDescription: "Generate monthly invoice directly from MongoDB trips.",
@@ -2406,6 +6263,16 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         monthlySummary: "Monthly Summary", month: "Month", trips: "Trips", km: "KM"
                     },
                     home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Kamlesh" },
+                    notices: {
+                        kicker: "Notice Center",
+                        title: "Announcements & Notices",
+                        subtitle: "View active updates from the admin in your selected language.",
+                        refresh: "Refresh Notices",
+                        popup: "Open Popup",
+                        empty: "No active announcements right now.",
+                        count_one: "{{count}} active notice",
+                        count_other: "{{count}} active notices"
+                    },
                     entry: {
                         title: "Trip Details Form", date: "Date", pickupTime: "Pickup Time", dropTime: "Drop Time",
                         tripId: "Trip ID", tripIdPlaceholder: "Manual ID", pickup: "Pickup", pickupPlaceholder: "Pickup point",
@@ -2426,10 +6293,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     table: { otherPlus: "Other:+₹", cngMinus: "CNG:-₹", expMinus: "Exp:-₹", editTitle: "Edit", deleteTitle: "Delete", tripsPrefix: "Trips: ", grandTotal: "Grand Total" },
                     status: { online: "✅ Back online!", offline: "📡 You're offline. Some features may be limited." },
                     toast: {
-                        enter4Digits: "Please enter 4 digits", wrongPin: "Wrong PIN", pinVerifyFailed: "PIN verify failed",
-                        enter4DigitsPin: "Enter 4 digits for PIN", pinMismatch: "PINs do not match", pinSetFailed: "PIN set failed", pinSet: "PIN set",
-                        newPin4Digits: "New PIN must be 4 digits", newPinMismatch: "New PINs do not match", currentPinWrong: "Current PIN is wrong",
-                        pinChanged: "PIN changed", pinChangeFailed: "PIN change failed",
                         appInstalled: "App installed successfully! 🎉", installNotAvailable: "Installation not available", installingApp: "Installing app...",
                         newVersion: "New version available! Refresh to update.", noChartData: "No data for chart ❌",
                         settingsSaved: "Settings Saved ✅", settingsFailed: "Failed to save settings ❌",
@@ -2451,26 +6314,30 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         pdfGenerating: "PDF Generating... ⏳", downloadComplete: "Download Complete! 📄",
                         selectInvoiceMonth: "Please select invoice month", generatingInvoice: "Generating invoice...",
                         invoiceFailed: "Failed to generate invoice", invoiceTemplateMissing: "Invoice template missing",
-                        invoiceDownloaded: "Invoice downloaded ✅", invoiceGenerationFailed: "Invoice generation failed"
+                        invoiceDownloaded: "Invoice downloaded ✅", invoiceGenerationFailed: "Invoice generation failed",
+                        deleteAccountNotAllowed: "Default login accounts cannot be deleted",
+                        deleteAccountStep1: "Please accept Terms & Conditions first",
+                        deleteAccountStep2: "Please confirm: Yes, I want to delete my account",
+                        deleteAccountSuccess: "Account deleted permanently",
+                        deleteAccountFailed: "Failed to delete account"
                     }
                 }
             },
             gu: {
                 translation: {
-                    nav: { home: "હોમ", dashboard: "ડેશબોર્ડ", entryForm: "વિગત", entries: "એન્ટ્રી", company: "કંપની", settings: "સેટિંગ્સ" },
+                    nav: { home: "હોમ", dashboard: "ડેશબોર્ડ", entryForm: "વિગત", entries: "એન્ટ્રી", company: "કંપની", notices: "નોટિસ", settings: "સેટિંગ્સ" },
                     login: { required: "લૉગિન જરૂરી છે", username: "મોબાઇલ નંબર", password: "પાસવર્ડ", button: "લૉગિન", authorized: "માત્ર અધિકૃત યુઝર" },
                     install: { title: "Tripset ઇન્સ્ટોલ કરો", subtitle: "સારો અનુભવ માટે એપ ઇન્સ્ટોલ કરો", install: "ઇન્સ્ટોલ", later: "પછી" },
-                    pin: {
-                        enterTitle: "4 અંકનો PIN દાખલ કરો", unlock: "અનલૉક", setTitle: "PIN સેટ કરો", setSubtitle: "એપ લૉક કરવા 4 અંકનો PIN બનાવો",
-                        newPin: "નવો PIN", confirmPin: "PIN કન્ફર્મ કરો", setAndUnlock: "PIN સેટ કરો અને અનલૉક કરો",
-                        changeTitle: "PIN બદલો", currentPin: "હાલનો PIN", confirmNewPin: "નવો PIN કન્ફર્મ કરો", savePin: "PIN સેવ કરો"
-                    },
                     settings: {
                         title: "સેટિંગ્સ", companyName: "કંપની નામ", rate: "રેટ (₹ પ્રતિ KM)", language: "ભાષા",
                         save: "સેટિંગ્સ સેવ કરો 💾", backupTitle: "બેકઅપ અને રિસ્ટોર", downloadBackup: "📥 બેકઅપ ડાઉનલોડ",
                         restoreLabel: "બેકઅપ રિસ્ટોર કરો (JSON ફાઇલ)", restoreBackup: "📤 બેકઅપ રિસ્ટોર",
                         invoiceTitle: "ઇન્વૉઇસ", invoiceGenerator: "🧾 ઇન્વૉઇસ જનરેટર", invoiceHelp: "મહિનો પસંદ કરો અને PDF ડાઉનલોડ કરો.",
-                        pinTitle: "PIN લૉક", changePin: "🔑 PIN બદલો", logout: "🚪 લૉગઆઉટ"
+                        deleteAccountTitle: "એકાઉન્ટ ડિલીટ", deleteAccountHint: "ડિફોલ્ટ લૉગિન એકાઉન્ટ ડિલીટ કરી શકાતા નથી.",
+                        deleteAccountWarning: "આ ક્રિયા કાયમી છે. તમારું બધું ડેટા ડેટાબેઝમાંથી ડિલીટ થઈ જશે.",
+                        deleteStep1: "હું Terms & Conditions સ્વીકારું છું અને આગળ વધવા માંગું છું.",
+                        deleteAccount: "🗑 એકાઉન્ટ ડિલીટ",
+                        logout: "🚪 લૉગઆઉટ"
                     },
                     dashboard: {
                         invoiceDescription: "MongoDB ટ્રિપ પરથી માસિક ઇન્વૉઇસ બનાવો.",
@@ -2482,6 +6349,16 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         monthlySummary: "માસિક સારાંશ", month: "મહિનો", trips: "ટ્રિપ", km: "KM"
                     },
                     home: { subtitle: "સર્વશ્રેષ્ઠ ટ્રિપ મેનેજમેન્ટ સિસ્ટમ", startEntry: "નવી એન્ટ્રી શરૂ કરો ➔", welcome: "સ્વાગત છે કમલેશ" },
+                    notices: {
+                        kicker: "નોટિસ સેન્ટર",
+                        title: "જાહેરાતો અને નોટિસ",
+                        subtitle: "તમારી પસંદ કરેલી ભાષામાં એડમિન અપડેટ જુઓ.",
+                        refresh: "નોટિસ રિફ્રેશ કરો",
+                        popup: "પોપઅપ ખોલો",
+                        empty: "હાલ કોઈ સક્રિય જાહેરાત નથી.",
+                        count_one: "{{count}} સક્રિય નોટિસ",
+                        count_other: "{{count}} સક્રિય નોટિસ"
+                    },
                     entry: {
                         title: "ટ્રિપની વિગત ભરો", date: "તારીખ", pickupTime: "પિકઅપ સમય", dropTime: "ડ્રોપ સમય",
                         tripId: "ટ્રિપ ID", tripIdPlaceholder: "મેન્યુઅલ ID", pickup: "પિકઅપ", pickupPlaceholder: "પિકઅપ પોઈન્ટ",
@@ -2501,10 +6378,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     table: { otherPlus: "અન્ય:+₹", cngMinus: "CNG:-₹", expMinus: "ખર્ચ:-₹", editTitle: "એડિટ", deleteTitle: "ડિલીટ", tripsPrefix: "ટ્રિપ: ", grandTotal: "ગ્રાન્ડ ટોટલ" },
                     status: { online: "✅ ફરી ઑનલાઇન", offline: "📡 તમે ઑફલાઇન છો. કેટલાક ફીચર્સ મર્યાદિત હોઈ શકે." },
                     toast: {
-                        enter4Digits: "કૃપા કરીને 4 અંક નાખો", wrongPin: "ખોટો PIN", pinVerifyFailed: "PIN ચકાસણી નિષ્ફળ",
-                        enter4DigitsPin: "PIN માટે 4 અંક નાખો", pinMismatch: "PIN મેળ ખાતા નથી", pinSetFailed: "PIN સેટ નિષ્ફળ", pinSet: "PIN સેટ થયું",
-                        newPin4Digits: "નવો PIN 4 અંકનો હોવો જોઈએ", newPinMismatch: "નવો PIN મેળ ખાતો નથી", currentPinWrong: "હાલનો PIN ખોટો છે",
-                        pinChanged: "PIN બદલાયો", pinChangeFailed: "PIN બદલવામાં નિષ્ફળ",
                         appInstalled: "એપ સફળતાપૂર્વક ઇન્સ્ટોલ થઈ! 🎉", installNotAvailable: "ઇન્સ્ટોલેશન ઉપલબ્ધ નથી", installingApp: "એપ ઇન્સ્ટોલ થઈ રહી છે...",
                         newVersion: "નવી આવૃત્તિ ઉપલબ્ધ છે! અપડેટ માટે રિફ્રેશ કરો.", noChartData: "ચાર્ટ માટે ડેટા નથી ❌",
                         settingsSaved: "સેટિંગ્સ સેવ થઈ ✅", settingsFailed: "સેટિંગ્સ સેવ નિષ્ફળ ❌",
@@ -2526,26 +6399,30 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         pdfGenerating: "PDF બને છે... ⏳", downloadComplete: "ડાઉનલોડ પૂર્ણ! 📄",
                         selectInvoiceMonth: "કૃપા કરીને ઇન્વૉઇસ મહિનો પસંદ કરો", generatingInvoice: "ઇન્વૉઇસ બને છે...",
                         invoiceFailed: "ઇન્વૉઇસ જનરેટ નિષ્ફળ", invoiceTemplateMissing: "ઇન્વૉઇસ ટેમ્પલેટ મળ્યો નથી",
-                        invoiceDownloaded: "ઇન્વૉઇસ ડાઉનલોડ થયું ✅", invoiceGenerationFailed: "ઇન્વૉઇસ જનરેશન નિષ્ફળ"
+                        invoiceDownloaded: "ઇન્વૉઇસ ડાઉનલોડ થયું ✅", invoiceGenerationFailed: "ઇન્વૉઇસ જનરેશન નિષ્ફળ",
+                        deleteAccountNotAllowed: "ડિફોલ્ટ લૉગિન એકાઉન્ટ ડિલીટ કરી શકાતા નથી",
+                        deleteAccountStep1: "સૌ પ્રથમ Terms & Conditions સ્વીકારો",
+                        deleteAccountStep2: "કૃપા કરીને કન્ફર્મ કરો: Yes, I want to delete my account",
+                        deleteAccountSuccess: "એકાઉન્ટ કાયમી રીતે ડિલીટ થયું",
+                        deleteAccountFailed: "એકાઉન્ટ ડિલીટ કરવામાં નિષ્ફળ"
                     }
                 }
             },
             hi: {
                 translation: {
-                    nav: { home: "होम", dashboard: "डैशबोर्ड", entryForm: "विवरण", entries: "एंट्री", company: "कंपनी", settings: "सेटिंग्स" },
+                    nav: { home: "होम", dashboard: "डैशबोर्ड", entryForm: "विवरण", entries: "एंट्री", company: "कंपनी", notices: "नोटिस", settings: "सेटिंग्स" },
                     login: { required: "लॉगिन आवश्यक है", username: "मोबाइल नंबर", password: "पासवर्ड", button: "लॉगिन", authorized: "केवल अधिकृत उपयोगकर्ता" },
                     install: { title: "Tripset इंस्टॉल करें", subtitle: "बेहतर अनुभव के लिए ऐप इंस्टॉल करें", install: "इंस्टॉल", later: "बाद में" },
-                    pin: {
-                        enterTitle: "4 अंकों का PIN दर्ज करें", unlock: "अनलॉक", setTitle: "PIN सेट करें", setSubtitle: "ऐप लॉक करने के लिए 4 अंकों का PIN बनाएं",
-                        newPin: "नया PIN", confirmPin: "PIN पुष्टि करें", setAndUnlock: "PIN सेट करें और अनलॉक करें",
-                        changeTitle: "PIN बदलें", currentPin: "वर्तमान PIN", confirmNewPin: "नया PIN पुष्टि करें", savePin: "PIN सेव करें"
-                    },
                     settings: {
                         title: "सेटिंग्स", companyName: "कंपनी नाम", rate: "रेट (₹ प्रति KM)", language: "भाषा",
                         save: "सेटिंग्स सेव करें 💾", backupTitle: "बैकअप और रिस्टोर", downloadBackup: "📥 बैकअप डाउनलोड",
                         restoreLabel: "बैकअप रिस्टोर करें (JSON फ़ाइल)", restoreBackup: "📤 बैकअप रिस्टोर",
                         invoiceTitle: "इनवॉइस", invoiceGenerator: "🧾 इनवॉइस जनरेटर", invoiceHelp: "महीना चुनें और PDF डाउनलोड करें।",
-                        pinTitle: "PIN लॉक", changePin: "🔑 PIN बदलें", logout: "🚪 लॉगआउट"
+                        deleteAccountTitle: "अकाउंट डिलीट", deleteAccountHint: "डिफ़ॉल्ट लॉगिन अकाउंट डिलीट नहीं किए जा सकते।",
+                        deleteAccountWarning: "यह कार्रवाई स्थायी है। आपका पूरा डेटा डेटाबेस से हट जाएगा।",
+                        deleteStep1: "मैं Terms & Conditions स्वीकार करता/करती हूं और आगे बढ़ना चाहता/चाहती हूं।",
+                        deleteAccount: "🗑 अकाउंट डिलीट",
+                        logout: "🚪 लॉगआउट"
                     },
                     dashboard: {
                         invoiceDescription: "MongoDB ट्रिप से मासिक इनवॉइस बनाएं।",
@@ -2557,6 +6434,16 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         monthlySummary: "मासिक सारांश", month: "महीना", trips: "ट्रिप", km: "KM"
                     },
                     home: { subtitle: "सर्वश्रेष्ठ ट्रिप मैनेजमेंट सिस्टम", startEntry: "नई एंट्री शुरू करें ➔", welcome: "स्वागत है कमलेश" },
+                    notices: {
+                        kicker: "नोटिस सेंटर",
+                        title: "घोषणाएं और नोटिस",
+                        subtitle: "अपनी चुनी हुई भाषा में एडमिन अपडेट देखें।",
+                        refresh: "नोटिस रिफ्रेश करें",
+                        popup: "पॉपअप खोलें",
+                        empty: "अभी कोई सक्रिय घोषणा नहीं है।",
+                        count_one: "{{count}} सक्रिय नोटिस",
+                        count_other: "{{count}} सक्रिय नोटिस"
+                    },
                     entry: {
                         title: "ट्रिप विवरण भरें", date: "तारीख", pickupTime: "पिकअप समय", dropTime: "ड्रॉप समय",
                         tripId: "ट्रिप ID", tripIdPlaceholder: "मैनुअल ID", pickup: "पिकअप", pickupPlaceholder: "पिकअप पॉइंट",
@@ -2576,10 +6463,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     table: { otherPlus: "अन्य:+₹", cngMinus: "CNG:-₹", expMinus: "खर्च:-₹", editTitle: "एडिट", deleteTitle: "डिलीट", tripsPrefix: "ट्रिप: ", grandTotal: "ग्रैंड टोटल" },
                     status: { online: "✅ फिर से ऑनलाइन", offline: "📡 आप ऑफलाइन हैं। कुछ फीचर्स सीमित हो सकते हैं।" },
                     toast: {
-                        enter4Digits: "कृपया 4 अंक दर्ज करें", wrongPin: "गलत PIN", pinVerifyFailed: "PIN सत्यापन विफल",
-                        enter4DigitsPin: "PIN के लिए 4 अंक दर्ज करें", pinMismatch: "PIN मेल नहीं खाते", pinSetFailed: "PIN सेट विफल", pinSet: "PIN सेट हो गया",
-                        newPin4Digits: "नया PIN 4 अंकों का होना चाहिए", newPinMismatch: "नया PIN मेल नहीं खाता", currentPinWrong: "वर्तमान PIN गलत है",
-                        pinChanged: "PIN बदल गया", pinChangeFailed: "PIN बदलना विफल",
                         appInstalled: "ऐप सफलतापूर्वक इंस्टॉल हुआ! 🎉", installNotAvailable: "इंस्टॉलेशन उपलब्ध नहीं", installingApp: "ऐप इंस्टॉल हो रहा है...",
                         newVersion: "नया संस्करण उपलब्ध है! अपडेट के लिए रिफ्रेश करें।", noChartData: "चार्ट के लिए डेटा नहीं ❌",
                         settingsSaved: "सेटिंग्स सेव हो गई ✅", settingsFailed: "सेटिंग्स सेव विफल ❌",
@@ -2601,7 +6484,12 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                         pdfGenerating: "PDF बन रही है... ⏳", downloadComplete: "डाउनलोड पूरा! 📄",
                         selectInvoiceMonth: "कृपया इनवॉइस महीना चुनें", generatingInvoice: "इनवॉइस बन रही है...",
                         invoiceFailed: "इनवॉइस जनरेट विफल", invoiceTemplateMissing: "इनवॉइस टेम्पलेट नहीं मिला",
-                        invoiceDownloaded: "इनवॉइस डाउनलोड हो गई ✅", invoiceGenerationFailed: "इनवॉइस जनरेशन विफल"
+                        invoiceDownloaded: "इनवॉइस डाउनलोड हो गई ✅", invoiceGenerationFailed: "इनवॉइस जनरेशन विफल",
+                        deleteAccountNotAllowed: "डिफ़ॉल्ट लॉगिन अकाउंट डिलीट नहीं किए जा सकते",
+                        deleteAccountStep1: "कृपया पहले Terms & Conditions स्वीकार करें",
+                        deleteAccountStep2: "कृपया पुष्टि करें: Yes, I want to delete my account",
+                        deleteAccountSuccess: "अकाउंट स्थायी रूप से डिलीट हो गया",
+                        deleteAccountFailed: "अकाउंट डिलीट करने में विफल"
                     }
                 }
             }
@@ -2672,9 +6560,20 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             if (!window.i18next || SUPPORTED_LANGUAGES.indexOf(lang) === -1) return;
             window.i18next.changeLanguage(lang).then(function() {
                 saveLanguage(lang);
+                window.appSettings = window.appSettings || {};
+                window.appSettings.language = lang;
+                var languageSelect = document.getElementById('languageSelect');
+                if (languageSelect && languageSelect.value !== lang) languageSelect.value = lang;
                 applyTranslations();
                 window.startTypingEffect();
                 if (window.currentTrips) renderTables(window.currentTrips);
+                window.loadAppConfig(lang).catch(function() {});
+                fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ language: lang })
+                }).catch(function() {});
             }).catch(function(err) {
                 console.error('changeLanguage failed:', err);
             });
@@ -2692,13 +6591,11 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
         function showLoginScreen() {
             console.log('🔐 showLoginScreen: Showing login screen');
             var login = document.getElementById('loginScreen');
-            var lock = document.getElementById('pinLockScreen');
             var appContent = document.getElementById('appContent');
             if (!login) {
                 console.error('🔐 showLoginScreen: loginScreen element not found!');
                 return;
             }
-            if (lock) { lock.classList.add('hidden'); setDisplayImportant(lock, 'none'); }
             if (appContent) {
                 setDisplayImportant(appContent, 'none');
                 setVisibilityImportant(appContent, 'hidden');
@@ -2715,90 +6612,88 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             }, 80);
         }
 
-        function showPinScreen(pinSet) {
-            var login = document.getElementById('loginScreen');
-            var lock = document.getElementById('pinLockScreen');
-            var appContent = document.getElementById('appContent');
-            var enterMode = document.getElementById('pinEnterMode');
-            var setMode = document.getElementById('pinSetMode');
+        function getPreferredTabAfterUnlock() {
+            var fromHash = String((window.location && window.location.hash) || '').replace(/^#/, '').trim();
+            if (fromHash && document.getElementById(fromHash)) return fromHash;
 
-            if (login) {
-                login.classList.remove('show');
-                setDisplayImportant(login, 'none');
-                setVisibilityImportant(login, 'hidden');
-            }
-            if (appContent) {
-                setDisplayImportant(appContent, 'none');
-                setVisibilityImportant(appContent, 'hidden');
-            }
+            var pending = String(window.pendingTabAfterUnlock || '').trim();
+            if (pending && document.getElementById(pending)) return pending;
 
-            if (!lock) return;
-            lock.classList.remove('hidden');
-            setDisplayImportant(lock, 'flex');
-            setVisibilityImportant(lock, 'visible');
-            setBodyScrollLocked(true);
+            var saved = '';
+            try {
+                saved = String(localStorage.getItem('tripset_last_tab') || '').trim();
+            } catch (e) {}
+            if (saved && document.getElementById(saved)) return saved;
 
-            if (pinSet) {
-                if (enterMode) enterMode.classList.remove('hidden');
-                if (setMode) setMode.classList.add('hidden');
-                setTimeout(function() { var el = document.getElementById('pinInput'); if (el) el.focus(); }, 100);
-            } else {
-                if (enterMode) enterMode.classList.add('hidden');
-                if (setMode) setMode.classList.remove('hidden');
-                setTimeout(function() { var el = document.getElementById('pinSetInput'); if (el) el.focus(); }, 100);
-            }
+            var active = document.querySelector('.tab-content.active');
+            if (active && active.id && active.id !== 'home') return String(active.id);
 
-            hideSplashNow();
+            return 'home';
         }
 
-        window.getRate = function() { return (window.appSettings && window.appSettings.rate) || 21; };
+        function forceActivateTab(tabId) {
+            var safeId = String(tabId || '').trim();
+            if (!safeId) return false;
+            var target = document.getElementById(safeId);
+            if (!target) return false;
 
-        function initApp() {
-            if (appInitialized) return;
-            appInitialized = true;
-            window.appSettings = {
-                rate: 21,
-                companyName: String(window.currentUserDisplayName || 'Kamlesh'),
-                darkMode: 'off',
-                installPromptShown: false,
-                invoiceLogoUrl: '/icon-512.png',
-                invoiceCustomerName: 'Walk-in Customer',
-                invoiceCustomerContact: '',
-                invoiceTaxPercent: 0,
-                invoicePaymentStatus: 'Pending'
-            };
-            window.loadSettings().then(function() {
-                var today = new Date();
-                var currentMonth = today.toISOString().slice(0, 7);
-                var dashFilter = document.getElementById('dashMonthFilter');
-                if (dashFilter) dashFilter.value = currentMonth;
-                var invoiceMonth = document.getElementById('invoiceMonth');
-                if (invoiceMonth) invoiceMonth.value = currentMonth;
-                fetchTrips();
-                window.startTypingEffect();
-                setTimeout(showInstallPromptIfNeeded, 1800);
-            }).catch(function(err) {
-                console.error('loadSettings failed:', err);
-                fetchTrips();
-                window.startTypingEffect();
-                setTimeout(showInstallPromptIfNeeded, 1800);
+            document.querySelectorAll('.tab-content').forEach(function(el) {
+                el.classList.remove('active');
             });
+            target.classList.add('active');
+
+            document.querySelectorAll('.nav-btn[data-tab]').forEach(function(btn) {
+                btn.classList.remove('nav-btn-active');
+                btn.classList.add('nav-btn-inactive');
+            });
+            document.querySelectorAll('.nav-btn[data-tab="' + safeId + '"]').forEach(function(btn) {
+                btn.classList.remove('nav-btn-inactive');
+                btn.classList.add('nav-btn-active');
+            });
+
+            window.pendingTabAfterUnlock = safeId;
+            try {
+                localStorage.setItem('tripset_last_tab', safeId);
+            } catch (e) {}
+
+            if (safeId === 'home' && window.startTypingEffect) window.startTypingEffect();
+            if (safeId === 'entries' || safeId === 'company-entries' || safeId === 'dashboard') {
+                if (window.fetchTrips) window.fetchTrips();
+            }
+            window.scrollTo({ top: 0, behavior: 'auto' });
+            return true;
         }
 
-        window.unlockScreen = function() {
+        function navigateToTabSafely(tabId) {
+            var safeId = String(tabId || '').trim();
+            if (!safeId) return false;
+
+            var switched = false;
+            if (window.showTab) {
+                try {
+                    window.showTab(safeId);
+                    switched = true;
+                } catch (err) {
+                    console.error('showTab failed, using force fallback:', err);
+                }
+            }
+
+            var target = document.getElementById(safeId);
+            if (!target || !target.classList.contains('active')) {
+                switched = forceActivateTab(safeId) || switched;
+            }
+            return switched;
+        }
+
+        function showAuthenticatedApp(targetTab) {
             var login = document.getElementById('loginScreen');
-            var el = document.getElementById('pinLockScreen');
             var appEl = document.getElementById('appContent');
             var splash = document.getElementById('splashScreen');
+
             if (login) {
                 login.classList.remove('show');
                 setDisplayImportant(login, 'none');
                 setVisibilityImportant(login, 'hidden');
-            }
-            if (el) {
-                el.classList.add('hidden');
-                setDisplayImportant(el, 'none');
-                setVisibilityImportant(el, 'hidden');
             }
             if (splash) {
                 splash.classList.add('hidden');
@@ -2811,7 +6706,289 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             }
             setBodyScrollLocked(false);
             initApp();
+            navigateToTabSafely(targetTab || 'home');
+        }
+
+        window.getRate = function() { return (window.appSettings && window.appSettings.rate) || 21; };
+        window.appFeatureFlags = { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+        window.activeAnnouncements = [];
+        window.allNotices = [];
+        window.lastNoticeSignature = '';
+        window.noticeModalDismissedKey = 'tripset_notice_modal_closed';
+
+        window.applyAppFeatureToggles = function() {
+            var flags = window.appFeatureFlags || { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+            document.querySelectorAll('[data-feature-control="pdf"]').forEach(function(el) {
+                el.style.display = flags.pdfEnabled === false ? 'none' : '';
+            });
+            document.querySelectorAll('[data-feature-control="excel"]').forEach(function(el) {
+                el.style.display = flags.excelEnabled === false ? 'none' : '';
+            });
         };
+
+        function escapeNoticeText(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function formatNoticeDate(value) {
+            if (!value) return '';
+            try {
+                return new Date(value).toLocaleString('en-IN', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                return String(value || '');
+            }
+        }
+
+        function buildNoticeMarkup(items, compact) {
+            return items.map(function(item) {
+                var title = String((item && item.title) || '').trim();
+                var message = String((item && item.message) || '').trim();
+                var createdAt = formatNoticeDate(item && item.createdAt);
+                return '' +
+                    '<div class="rounded-xl border border-amber-200 bg-white/80 p-3">' +
+                        (title ? '<div class="font-black text-amber-800">' + escapeNoticeText(title) + '</div>' : '') +
+                        '<div class="mt-1 text-sm font-semibold text-slate-700">' + escapeNoticeText(message) + '</div>' +
+                        (createdAt ? '<div class="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">' + escapeNoticeText(createdAt) + '</div>' : '') +
+                    '</div>';
+            }).join('');
+        }
+
+        function hasDismissedNoticeModal() {
+            try {
+                return sessionStorage.getItem(window.noticeModalDismissedKey) === '1';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function setDismissedNoticeModal(value) {
+            try {
+                if (value) sessionStorage.setItem(window.noticeModalDismissedKey, '1');
+                else sessionStorage.removeItem(window.noticeModalDismissedKey);
+            } catch (e) {}
+        }
+
+        function isHomeAnnouncementContext() {
+            var pathname = String((window.location && window.location.pathname) || '/').trim() || '/';
+            var normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
+            if (normalizedPath !== '/') return false;
+            var homeTab = document.getElementById('home');
+            return !!(homeTab && homeTab.classList.contains('active'));
+        }
+
+        window.syncAnnouncementVisibility = function() {
+            var panel = document.getElementById('announcementPanel');
+            var modal = document.getElementById('noticeModal');
+            var canShow = isHomeAnnouncementContext();
+            if (!canShow) {
+                if (panel) panel.classList.add('hidden');
+                if (modal) modal.classList.add('hidden');
+            }
+            return canShow;
+        };
+
+        window.renderNoticeModal = function() {
+            var list = document.getElementById('noticeModalList');
+            if (!list) return;
+            var items = Array.isArray(window.allNotices) && window.allNotices.length ? window.allNotices : (Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : []);
+            if (!items.length) {
+                list.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm font-bold text-slate-500">' + escapeNoticeText(t('notices.empty')) + '</div>';
+                return;
+            }
+            list.innerHTML = buildNoticeMarkup(items, false);
+        };
+
+        window.renderNoticeSection = function() {
+            var summary = document.getElementById('noticeSectionSummary');
+            var list = document.getElementById('noticeSectionList');
+            if (!summary || !list) return;
+            var items = Array.isArray(window.allNotices) && window.allNotices.length ? window.allNotices : (Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : []);
+            var count = items.length;
+            summary.textContent = count > 0
+                ? t(count === 1 ? 'notices.count_one' : 'notices.count_other', { count: count })
+                : t('notices.empty');
+            if (!items.length) {
+                list.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">' + escapeNoticeText(t('notices.empty')) + '</div>';
+                return;
+            }
+            list.innerHTML = buildNoticeMarkup(items, false);
+        };
+
+        window.openNoticeModal = function(forceOpen) {
+            var modal = document.getElementById('noticeModal');
+            if (!modal) return;
+            if (!isHomeAnnouncementContext()) {
+                modal.classList.add('hidden');
+                return;
+            }
+            window.renderNoticeModal();
+            if (!Array.isArray(window.activeAnnouncements) || !window.activeAnnouncements.length) return;
+            if (!forceOpen && hasDismissedNoticeModal()) return;
+            modal.classList.remove('hidden');
+        };
+
+        window.closeNoticeModal = function() {
+            var modal = document.getElementById('noticeModal');
+            if (modal) modal.classList.add('hidden');
+            setDismissedNoticeModal(true);
+        };
+
+        window.renderAnnouncements = function() {
+            var panel = document.getElementById('announcementPanel');
+            var list = document.getElementById('announcementList');
+            if (!panel || !list) return;
+            var items = Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : [];
+            if (!items.length) {
+                panel.classList.add('hidden');
+                list.innerHTML = '';
+                window.renderNoticeModal();
+                window.renderNoticeSection();
+                return;
+            }
+            if (!window.syncAnnouncementVisibility()) {
+                panel.classList.add('hidden');
+                window.renderNoticeSection();
+                return;
+            }
+            panel.classList.remove('hidden');
+            list.innerHTML = buildNoticeMarkup(items.slice(0, 3), true);
+            window.renderNoticeModal();
+            window.renderNoticeSection();
+        };
+
+        window.loadAppConfig = async function(langOverride) {
+            try {
+                var currentLanguage = String(
+                    langOverride
+                    || (window.appSettings && window.appSettings.language)
+                    || (window.i18next && window.i18next.language)
+                    || getSavedLanguage()
+                    || 'en'
+                ).trim().toLowerCase();
+                var query = '?lang=' + encodeURIComponent(currentLanguage);
+                var res = await fetch('/api/app/config' + query, { credentials: 'include', cache: 'no-store' });
+                if (!res.ok) throw new Error('Failed to load app config');
+                var cfg = await res.json();
+                var features = (cfg && cfg.features) || {};
+                window.appFeatureFlags = {
+                    signupEnabled: features.signupEnabled !== false,
+                    pdfEnabled: features.pdfEnabled !== false,
+                    excelEnabled: features.excelEnabled !== false
+                };
+                window.appSettings = window.appSettings || {};
+                window.appSettings.language = String((cfg && cfg.language) || currentLanguage || 'en').trim().toLowerCase();
+                window.activeAnnouncements = Array.isArray(cfg && cfg.announcements) ? cfg.announcements : [];
+                window.allNotices = window.activeAnnouncements.slice();
+                var nextNoticeSignature = window.activeAnnouncements.map(function(item) {
+                    return [
+                        String((item && item._id) || ''),
+                        String((item && item.updatedAt) || ''),
+                        String((item && item.language) || '')
+                    ].join(':');
+                }).join('|');
+                if (window.lastNoticeSignature !== nextNoticeSignature) {
+                    window.lastNoticeSignature = nextNoticeSignature;
+                    setDismissedNoticeModal(false);
+                }
+            } catch (err) {
+                console.error('loadAppConfig error:', err);
+                window.appFeatureFlags = window.appFeatureFlags || { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+                window.activeAnnouncements = window.activeAnnouncements || [];
+            }
+            window.applyAppFeatureToggles();
+            window.renderAnnouncements();
+            window.openNoticeModal(false);
+        };
+
+        window.loadNotices = async function(showFeedback) {
+            try {
+                var currentLanguage = String(
+                    (window.appSettings && window.appSettings.language)
+                    || (window.i18next && window.i18next.language)
+                    || getSavedLanguage()
+                    || 'en'
+                ).trim().toLowerCase();
+                var res = await fetch('/api/notices?lang=' + encodeURIComponent(currentLanguage), {
+                    credentials: 'include',
+                    cache: 'no-store'
+                });
+                if (!res.ok) throw new Error('Failed to load notices');
+                var payload = await res.json();
+                var notices = Array.isArray(payload && payload.notices) ? payload.notices : [];
+                window.allNotices = notices;
+                window.activeAnnouncements = notices.slice();
+                window.renderAnnouncements();
+                if (showFeedback) showToast('Notices refreshed');
+                return notices;
+            } catch (err) {
+                console.error('loadNotices error:', err);
+                window.renderNoticeSection();
+                if (showFeedback) showToast('Failed to refresh notices');
+                return [];
+            }
+        };
+
+        window.trackReportDownload = async function(reportType) {
+            try {
+                await fetch('/api/activity/report-download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ reportType: String(reportType || 'report') })
+                });
+            } catch (err) {}
+        };
+
+        function initApp() {
+            if (appInitialized) return;
+            appInitialized = true;
+            window.appSettings = {
+                rate: 21,
+                companyName: String(window.currentUserDisplayName || 'Kamlesh'),
+                language: getSavedLanguage(),
+                darkMode: 'off',
+                installPromptShown: false,
+                invoiceLogoUrl: '/icon-512.png',
+                invoiceCustomerName: 'Walk-in Customer',
+                invoiceCustomerContact: '',
+                invoiceTaxPercent: 0,
+                invoicePaymentStatus: 'Pending'
+            };
+            Promise.resolve()
+                .then(function() { return window.loadSettings(); })
+                .catch(function(err) {
+                    console.error('loadSettings during init failed:', err);
+                    return window.appSettings;
+                })
+                .then(function() {
+                    return window.loadAppConfig(window.appSettings && window.appSettings.language);
+                })
+                .then(function() {
+                var today = new Date();
+                var currentMonth = today.toISOString().slice(0, 7);
+                var dashFilter = document.getElementById('dashMonthFilter');
+                if (dashFilter) dashFilter.value = currentMonth;
+                var invoiceMonth = document.getElementById('invoiceMonth');
+                if (invoiceMonth) invoiceMonth.value = currentMonth;
+                fetchTrips();
+                window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
+            }).catch(function(err) {
+                console.error('initApp failed:', err);
+                fetchTrips();
+                window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
+            });
+        }
 
         window.doLogin = async function() {
             var uEl = document.getElementById('loginUsername');
@@ -2860,7 +7037,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 console.log('🔐 bootstrapAuth: Checking auth status...');
                 var res = await fetch('/api/auth/status', { 
                     cache: 'no-store',
-                    credentials: 'include' // Include cookies for session
+                    credentials: 'include'
                 });
                 if (!res.ok) {
                     console.warn('🔐 bootstrapAuth: Status check failed (HTTP ' + res.status + ').');
@@ -2876,146 +7053,108 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 }
                 setAuthenticatedIdentity(s);
                 applyTranslations();
-                console.log('🔐 bootstrapAuth: Authenticated, unlocking app');
-                window.unlockScreen();
+                window.pendingTabAfterUnlock = 'home';
+                showAuthenticatedApp('home');
             } catch (e) {
                 console.error('🔐 bootstrapAuth: Error:', e);
                 window.location.href = '/login';
             }
         };
 
-        window.submitPin = async function() {
-            var input = document.getElementById('pinInput');
-            if (!input) return;
-            var val = normalizePinInput(input.value || '');
-            input.value = val;
-            if (val.length !== 4 || !/^\d{4}$/.test(val)) {
-                showToast(t('toast.enter4Digits'));
-                return;
-            }
-            try {
-                var res = await fetch('/api/pin/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ pin: val })
-                });
-                if (!res.ok) {
-                    var msg = t('toast.wrongPin');
-                    try {
-                        var err = await res.json();
-                        if (err && err.error) msg = String(err.error);
-                    } catch (e) {}
-                    input.classList.add('error', 'pin-shake');
-                    input.value = '';
-                    input.focus();
-                    showToast(msg);
-                    setTimeout(function() {
-                        input.classList.remove('pin-shake');
-                        setTimeout(function() { input.classList.remove('error'); }, 400);
-                    }, 400);
-                    return;
-                }
-                input.value = '';
-                window.unlockScreen();
-            } catch (e) {
-                showToast(t('toast.pinVerifyFailed'));
-            }
-        };
+        var DELETE_ACCOUNT_CONFIRM_TEXT = 'Yes, I want to delete my account';
 
-        window.setPin = async function() {
-            var inp = document.getElementById('pinSetInput');
-            var conf = document.getElementById('pinSetConfirm');
-            if (!inp || !conf) return;
-            var a = normalizePinInput(inp.value || '');
-            var b = normalizePinInput(conf.value || '');
-            inp.value = a;
-            conf.value = b;
-            if (a.length !== 4 || !/^\d{4}$/.test(a)) {
-                showToast(t('toast.enter4DigitsPin'));
-                return;
+        function updateDeleteAccountConfirmState() {
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            var btn = document.getElementById('confirmDeleteAccountBtn');
+            if (!terms || !finalBox || !btn) return;
+            var ready = !!terms.checked && !!finalBox.checked;
+            btn.disabled = !ready;
+            if (ready) {
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+            } else {
+                btn.classList.add('opacity-60', 'cursor-not-allowed');
             }
-            if (a !== b) {
-                showToast(t('toast.pinMismatch'));
-                conf.classList.add('error', 'pin-shake');
-                setTimeout(function() {
-                    conf.classList.remove('pin-shake');
-                    setTimeout(function() { conf.classList.remove('error'); }, 400);
-                }, 400);
-                return;
-            }
-            try {
-                var res = await fetch('/api/pin/set', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ pin: a })
-                });
-                if (!res.ok) {
-                    showToast(t('toast.pinSetFailed'));
-                    return;
-                }
-                inp.value = ''; conf.value = '';
-                showToast(t('toast.pinSet'));
-                window.unlockScreen();
-            } catch (e) {
-                showToast(t('toast.pinSetFailed'));
-            }
-        };
+        }
 
-        window.openChangePinModal = function() {
-            var m = document.getElementById('changePinModal');
+        window.openDeleteAccountModal = function() {
+            if (!(window.authProfile && window.authProfile.canDeleteAccount)) {
+                showToast(t('toast.deleteAccountNotAllowed'));
+                return;
+            }
+            var m = document.getElementById('deleteAccountModal');
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            if (terms) terms.checked = false;
+            if (finalBox) finalBox.checked = false;
+            updateDeleteAccountConfirmState();
             if (m) m.classList.remove('hidden');
-            document.getElementById('changePinCurrent').value = '';
-            document.getElementById('changePinNew').value = '';
-            document.getElementById('changePinConfirm').value = '';
         };
 
-        window.closeChangePinModal = function() {
-            var m = document.getElementById('changePinModal');
+        window.closeDeleteAccountModal = function() {
+            var m = document.getElementById('deleteAccountModal');
             if (m) m.classList.add('hidden');
         };
 
-        window.saveNewPin = function() {
-            var cur = document.getElementById('changePinCurrent');
-            var newPin = document.getElementById('changePinNew');
-            var conf = document.getElementById('changePinConfirm');
-            if (!cur || !newPin || !conf) return;
-            var c = normalizePinInput(cur.value || '');
-            var n = normalizePinInput(newPin.value || '');
-            var co = normalizePinInput(conf.value || '');
-            cur.value = c;
-            newPin.value = n;
-            conf.value = co;
-            if (n.length !== 4 || !/^\d{4}$/.test(n)) {
-                showToast(t('toast.newPin4Digits'));
+        window.confirmDeleteAccount = async function() {
+            if (!(window.authProfile && window.authProfile.canDeleteAccount)) {
+                showToast(t('toast.deleteAccountNotAllowed'));
                 return;
             }
-            if (n !== co) {
-                showToast(t('toast.newPinMismatch'));
+
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            var btn = document.getElementById('confirmDeleteAccountBtn');
+            if (!terms || !finalBox || !btn) return;
+
+            if (!terms.checked) {
+                showToast(t('toast.deleteAccountStep1'));
                 return;
             }
-            (async function() {
-                try {
-                    var res = await fetch('/api/pin/change', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ currentPin: c, newPin: n })
-                    });
-                    if (!res.ok) {
-                        showToast(t('toast.currentPinWrong'));
-                        cur.classList.add('error', 'pin-shake');
-                        setTimeout(function() { cur.classList.remove('pin-shake', 'error'); }, 400);
-                        return;
-                    }
-                    cur.value = ''; newPin.value = ''; conf.value = '';
-                    window.closeChangePinModal();
-                    showToast(t('toast.pinChanged'));
-                } catch (e) {
-                    showToast(t('toast.pinChangeFailed'));
+            if (!finalBox.checked) {
+                showToast(t('toast.deleteAccountStep2'));
+                return;
+            }
+
+            var originalLabel = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerText = 'Deleting...';
+
+            try {
+                var res = await fetch('/api/account/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        termsAccepted: true,
+                        finalConfirmed: true,
+                        finalConfirmation: DELETE_ACCOUNT_CONFIRM_TEXT
+                    })
+                });
+
+                if (!res.ok) {
+                    var errText = t('toast.deleteAccountFailed');
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) errText = String(errData.error);
+                    } catch (e) {}
+                    showToast(errText);
+                    btn.innerHTML = originalLabel;
+                    updateDeleteAccountConfirmState();
+                    return;
                 }
-            })();
+
+                showToast(t('toast.deleteAccountSuccess'));
+                window.closeDeleteAccountModal();
+                setTimeout(function() {
+                    window.location.href = '/signup';
+                }, 700);
+            } catch (err) {
+                showToast(t('toast.deleteAccountFailed'));
+                btn.innerHTML = originalLabel;
+                updateDeleteAccountConfirmState();
+            }
         };
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -3023,19 +7162,6 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
             var loginP = document.getElementById('loginPassword');
             if (loginU) loginU.addEventListener('keydown', function(e) { if (e.key === 'Enter') window.doLogin(); });
             if (loginP) loginP.addEventListener('keydown', function(e) { if (e.key === 'Enter') window.doLogin(); });
-
-            var pinInput = document.getElementById('pinInput');
-            if (pinInput) {
-                pinInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') window.submitPin();
-                });
-            }
-            var pinSetConfirm = document.getElementById('pinSetConfirm');
-            if (pinSetConfirm) {
-                pinSetConfirm.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') window.setPin();
-                });
-            }
 
             var invModal = document.getElementById('invoiceMonthModal');
             if (invModal) {
@@ -3046,14 +7172,19 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     }
                 });
             }
+
+            var deleteTerms = document.getElementById('deleteTermsCheckbox');
+            var deleteFinal = document.getElementById('deleteFinalCheckbox');
+            if (deleteTerms) deleteTerms.addEventListener('change', updateDeleteAccountConfirmState);
+            if (deleteFinal) deleteFinal.addEventListener('change', updateDeleteAccountConfirmState);
+            updateDeleteAccountConfirmState();
+            refreshDeleteAccountUI();
         });
 
-        // Splash Screen Logic - stays visible until PIN unlock
+        // Splash Screen Logic
         function hideSplashScreen() {
             var splash = document.getElementById('splashScreen');
-            var lockScreen = document.getElementById('pinLockScreen');
-            // Only hide if PIN screen is not showing (already unlocked)
-            if (splash && lockScreen && lockScreen.style.display === 'none') {
+            if (splash) {
                 splash.classList.add('hidden');
                 setTimeout(function() {
                     splash.style.display = 'none';
@@ -3161,9 +7292,8 @@ function showInstallPromptIfNeeded() {
             if (prompt) prompt.classList.remove('show');
         };
 
-        // Auth + PIN bootstrap flow
+        // Auth bootstrap flow
         var loginScreen = document.getElementById('loginScreen');
-        var pinLockScreen = document.getElementById('pinLockScreen');
         var appContent = document.getElementById('appContent');
 
         function startAuthFlow() {
@@ -3184,12 +7314,10 @@ function showInstallPromptIfNeeded() {
                 // Hard fallback: if all screens are hidden, show login screen.
                 setTimeout(function() {
                     var login = document.getElementById('loginScreen');
-                    var pin = document.getElementById('pinLockScreen');
                     var app = document.getElementById('appContent');
                     var loginHidden = !login || window.getComputedStyle(login).display === 'none';
-                    var pinHidden = !pin || window.getComputedStyle(pin).display === 'none';
                     var appHidden = !app || window.getComputedStyle(app).display === 'none';
-                    if (loginHidden && pinHidden && appHidden) {
+                    if (loginHidden && appHidden) {
                         console.warn('🔐 startAuthFlow: All screens hidden. Forcing login fallback.');
                         window.location.href = '/login';
                     }
@@ -3313,6 +7441,7 @@ function renderWeeklyChart(data) {
             ]
         }
     });
+
 }
 
 
@@ -3489,9 +7618,11 @@ window.loadSettings = async function() {
         const res = await fetch('/api/settings', { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to fetch settings');
         const s = await res.json();
+        const preferredLanguage = String(s.language || getSavedLanguage() || 'en').trim().toLowerCase();
         window.appSettings = {
             rate: Number(s.rate) || 21,
             companyName: String(s.companyName || window.currentUserDisplayName || 'Kamlesh'),
+            language: SUPPORTED_LANGUAGES.indexOf(preferredLanguage) !== -1 ? preferredLanguage : 'en',
             darkMode: String(s.darkMode || 'off'),
             installPromptShown: !!s.installPromptShown,
             invoiceLogoUrl: String(s.invoiceLogoUrl || '/icon-512.png'),
@@ -3508,6 +7639,7 @@ window.loadSettings = async function() {
         var contactEl = document.getElementById('invoiceCustomerContact');
         var taxEl = document.getElementById('invoiceTaxPercent');
         var statusEl = document.getElementById('invoicePaymentStatus');
+        var languageEl = document.getElementById('languageSelect');
         if (rateEl) rateEl.value = window.appSettings.rate;
         if (companyEl) companyEl.value = window.appSettings.companyName;
         if (rateDisplay) rateDisplay.value = window.appSettings.rate;
@@ -3516,6 +7648,17 @@ window.loadSettings = async function() {
         if (contactEl) contactEl.value = window.appSettings.invoiceCustomerContact;
         if (taxEl) taxEl.value = window.appSettings.invoiceTaxPercent;
         if (statusEl) statusEl.value = window.appSettings.invoicePaymentStatus;
+        if (languageEl) languageEl.value = window.appSettings.language;
+        saveLanguage(window.appSettings.language);
+        if (window.i18next && window.i18next.language !== window.appSettings.language) {
+            try {
+                await window.i18next.changeLanguage(window.appSettings.language);
+                applyTranslations();
+                window.startTypingEffect();
+            } catch (langErr) {
+                console.error('loadSettings language sync failed:', langErr);
+            }
+        }
         if (window.appSettings.darkMode === 'on') document.body.classList.add('dark');
         else document.body.classList.remove('dark');
         return window.appSettings;
@@ -3524,6 +7667,7 @@ window.loadSettings = async function() {
         window.appSettings = window.appSettings || {
             rate: 21,
             companyName: String(window.currentUserDisplayName || 'Kamlesh'),
+            language: getSavedLanguage(),
             darkMode: 'off',
             installPromptShown: false,
             invoiceLogoUrl: '/icon-512.png',
@@ -3540,6 +7684,7 @@ window.loadSettings = async function() {
 window.saveSettings = async function() {
     const rate = document.getElementById('rateSetting').value || 21;
     const company = document.getElementById('companyName').value || '';
+    const language = document.getElementById('languageSelect')?.value || ((window.appSettings && window.appSettings.language) || getSavedLanguage());
     const invoiceLogoUrl = document.getElementById('invoiceLogoUrl')?.value || '/icon-512.png';
     const invoiceCustomerName = document.getElementById('invoiceCustomerName')?.value || '';
     const invoiceCustomerContact = document.getElementById('invoiceCustomerContact')?.value || '';
@@ -3554,6 +7699,7 @@ window.saveSettings = async function() {
             body: JSON.stringify({
                 rate: Number(rate),
                 companyName: company,
+                language: language,
                 invoiceLogoUrl: invoiceLogoUrl,
                 invoiceCustomerName: invoiceCustomerName,
                 invoiceCustomerContact: invoiceCustomerContact,
@@ -3565,6 +7711,7 @@ window.saveSettings = async function() {
         const s = await res.json();
         window.appSettings.rate = Number(s.rate) || 21;
         window.appSettings.companyName = String(s.companyName || window.currentUserDisplayName || 'Kamlesh');
+        window.appSettings.language = String(s.language || language || 'en');
         window.appSettings.invoiceLogoUrl = String(s.invoiceLogoUrl || '/icon-512.png');
         window.appSettings.invoiceCustomerName = String(s.invoiceCustomerName || 'Walk-in Customer');
         window.appSettings.invoiceCustomerContact = String(s.invoiceCustomerContact || '');
@@ -3572,6 +7719,13 @@ window.saveSettings = async function() {
         window.appSettings.invoicePaymentStatus = String(s.invoicePaymentStatus || 'Pending');
         var rateDisplay = document.getElementById('rateDisplay');
         if (rateDisplay) rateDisplay.value = window.appSettings.rate;
+        saveLanguage(window.appSettings.language);
+        if (window.i18next && window.i18next.language !== window.appSettings.language) {
+            await window.i18next.changeLanguage(window.appSettings.language);
+            applyTranslations();
+            window.startTypingEffect();
+        }
+        await window.loadAppConfig(window.appSettings.language);
         showToast(t('toast.settingsSaved'));
     } catch (e) {
         showToast(t('toast.settingsFailed'));
@@ -3580,6 +7734,10 @@ window.saveSettings = async function() {
 
 
 window.exportExcel = async function () {
+    if (window.appFeatureFlags && window.appFeatureFlags.excelEnabled === false) {
+        showToast('Excel export disabled by admin');
+        return;
+    }
 
     showToast(t('toast.preparingExcel'));
 
@@ -3611,6 +7769,7 @@ window.exportExcel = async function () {
     XLSX.utils.book_append_sheet(wb, ws, "Company Report");
 
     XLSX.writeFile(wb, "Company_Report.xlsx");
+    window.trackReportDownload('excel');
 
     showToast(t('toast.excelDownloaded'));
 };
@@ -3922,6 +8081,9 @@ window.closeEditModal = function() {
             };
 
            window.showTab = function(id) {
+    window.pendingTabAfterUnlock = String(id || '').trim();
+    try { localStorage.setItem('tripset_last_tab', window.pendingTabAfterUnlock); } catch (e) {}
+
     document.querySelectorAll('.tab-content')
         .forEach(c => c.classList.remove('active'));
 
@@ -3942,6 +8104,9 @@ window.closeEditModal = function() {
 
     if (id === 'entries' || id === 'company-entries' || id === 'dashboard')
         fetchTrips();
+
+    if (id === 'notices' && window.loadNotices)
+        window.loadNotices(false);
 
     if (id === 'home')
         window.startTypingEffect();
@@ -4345,14 +8510,124 @@ renderWeeklyChart(data);
             }
 
             window.downloadPDF = async function(id) {
-                const el = document.getElementById(id);
-                showToast(t('toast.pdfGenerating'));
-                await html2pdf().set({ 
-                    margin: 5, 
-                    filename: 'Trip_Report.pdf', 
-                    jsPDF: {format: 'a4', orientation: 'portrait'} 
-                }).from(el).save();
-                showToast(t('toast.downloadComplete'));
+                if (window.appFeatureFlags && window.appFeatureFlags.pdfEnabled === false) {
+                    showToast('PDF download disabled by admin');
+                    return;
+                }
+                const sourceEl = document.getElementById(id);
+                if (!sourceEl) return;
+
+                const reportLabel = id === 'company-entries' ? 'Company Report' : 'Entry Report';
+                const filenamePrefix = id === 'company-entries' ? 'Company_Report' : 'Entry_Report';
+                const todayToken = new Date().toISOString().slice(0, 10);
+                const filename = filenamePrefix + '_' + todayToken + '.pdf';
+
+                const exportRoot = document.createElement('div');
+                exportRoot.style.position = 'fixed';
+                exportRoot.style.left = '-10000px';
+                exportRoot.style.top = '0';
+                exportRoot.style.width = '794px';
+                exportRoot.style.padding = '16px';
+                exportRoot.style.background = '#ffffff';
+                exportRoot.style.color = '#0f172a';
+                exportRoot.style.fontFamily = "'Hind Vadodara','Inter',sans-serif";
+
+                const clone = sourceEl.cloneNode(true);
+                clone.style.background = '#ffffff';
+                clone.style.color = '#0f172a';
+                clone.style.border = '1px solid #e2e8f0';
+                clone.style.borderRadius = '12px';
+                clone.style.boxShadow = 'none';
+                clone.style.overflow = 'visible';
+                clone.style.width = '100%';
+
+                clone.querySelectorAll('.no-pdf,button,input,select,textarea,canvas,svg').forEach(function(el) {
+                    el.remove();
+                });
+                clone.querySelectorAll('#dashboard,[id*="chart"],[id*="Chart"],.chart-container').forEach(function(el) {
+                    el.remove();
+                });
+
+                clone.querySelectorAll('table').forEach(function(tbl) {
+                    tbl.style.width = '100%';
+                    tbl.style.borderCollapse = 'collapse';
+                    tbl.style.tableLayout = 'fixed';
+                    tbl.style.background = '#ffffff';
+                });
+                clone.querySelectorAll('thead').forEach(function(head) {
+                    if (id === 'company-entries') {
+                        head.style.background = '#eef2ff';
+                        head.style.color = '#1e293b';
+                    } else {
+                        head.style.background = '#0f172a';
+                        head.style.color = '#f8fafc';
+                    }
+                });
+                clone.querySelectorAll('tfoot').forEach(function(foot) {
+                    if (id === 'company-entries') {
+                        foot.style.background = '#312e81';
+                        foot.style.color = '#ffffff';
+                    } else {
+                        foot.style.background = '#0f172a';
+                        foot.style.color = '#ffffff';
+                    }
+                });
+                clone.querySelectorAll('th,td').forEach(function(cell) {
+                    cell.style.border = '1px solid #cbd5e1';
+                    cell.style.padding = '7px';
+                    cell.style.fontSize = '11px';
+                    cell.style.verticalAlign = 'top';
+                    cell.style.wordBreak = 'break-word';
+                });
+                clone.querySelectorAll('tr').forEach(function(row) {
+                    row.style.pageBreakInside = 'avoid';
+                });
+
+                const header = document.createElement('div');
+                header.style.marginBottom = '12px';
+                header.style.padding = '10px 12px';
+                header.style.border = '1px solid #e2e8f0';
+                header.style.borderRadius = '10px';
+                header.style.background = '#f8fafc';
+                header.innerHTML = ''
+                    + '<div style="font-size:18px;font-weight:900;color:#0f172a;">Tripset - ' + reportLabel + '</div>'
+                    + '<div style="font-size:11px;color:#475569;margin-top:2px;">Generated: ' + new Date().toLocaleString('en-IN') + '</div>'
+                    + '<div style="font-size:11px;color:#475569;">User: ' + String(window.currentUserDisplayName || '') + '</div>';
+
+                exportRoot.appendChild(header);
+                exportRoot.appendChild(clone);
+                document.body.appendChild(exportRoot);
+
+                try {
+                    showToast(t('toast.pdfGenerating'));
+                    await html2pdf().set({
+                        margin: [8, 8, 10, 8],
+                        filename: filename,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: {
+                            scale: 2,
+                            useCORS: true,
+                            allowTaint: false,
+                            backgroundColor: '#ffffff',
+                            scrollX: 0,
+                            scrollY: 0
+                        },
+                        jsPDF: {
+                            unit: 'mm',
+                            format: 'a4',
+                            orientation: 'portrait',
+                            compress: true
+                        },
+                        pagebreak: { mode: ['css', 'legacy'] }
+                    }).from(exportRoot).save();
+                    window.trackReportDownload(id === 'company-entries' ? 'company-pdf' : 'entries-pdf');
+                    showToast(t('toast.downloadComplete'));
+                } catch (err) {
+                    console.error('PDF export failed:', err);
+                    showToast('PDF export failed');
+                } finally {
+                    exportRoot.remove();
+                }
             };
 
             // Invoice Generator (MongoDB only)
@@ -4393,6 +8668,109 @@ renderWeeklyChart(data);
                         .replace(/'/g, '&#39;');
                 }
 
+                function resolveInvoiceAssetUrl(url) {
+                    const raw = String(url || '').trim();
+                    if (!raw) return '';
+                    try {
+                        return new URL(raw, window.location.origin).href;
+                    } catch (err) {
+                        return raw;
+                    }
+                }
+
+                function createInvoiceLogoFallbackHtml() {
+                    return '<div style="width:44px;height:44px;border:1px solid #0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;background:#fff;">T</div>';
+                }
+
+                function createInvoiceExportRoot(html) {
+                    const root = document.createElement('div');
+                    root.setAttribute('data-invoice-export-root', '1');
+                    root.style.position = 'fixed';
+                    root.style.left = '0';
+                    root.style.top = '0';
+                    root.style.width = '210mm';
+                    root.style.maxWidth = '210mm';
+                    root.style.padding = '0';
+                    root.style.margin = '0';
+                    root.style.background = '#ffffff';
+                    root.style.opacity = '1';
+                    root.style.pointerEvents = 'none';
+                    root.style.zIndex = '-1';
+                    root.style.overflow = 'hidden';
+                    root.style.boxSizing = 'border-box';
+                    root.innerHTML = html;
+                    document.body.appendChild(root);
+                    return root;
+                }
+
+                function replaceInvoiceImageWithFallback(img) {
+                    if (!img || !img.parentNode) return;
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = createInvoiceLogoFallbackHtml();
+                    const fallback = wrap.firstChild;
+                    if (fallback) {
+                        img.parentNode.replaceChild(fallback, img);
+                    }
+                }
+
+                async function waitForInvoiceRender(root) {
+                    if (!root) return;
+                    try {
+                        if (document.fonts && document.fonts.ready) {
+                            await document.fonts.ready;
+                        }
+                    } catch (err) {}
+
+                    const images = Array.from(root.querySelectorAll('img'));
+                    await Promise.all(images.map(function(img) {
+                        return new Promise(function(resolve) {
+                            let done = false;
+                            function finish() {
+                                if (done) return;
+                                done = true;
+                                resolve();
+                            }
+                            function handleLoad() {
+                                cleanup();
+                                if (!img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                finish();
+                            }
+                            function handleError() {
+                                cleanup();
+                                replaceInvoiceImageWithFallback(img);
+                                finish();
+                            }
+                            function cleanup() {
+                                img.removeEventListener('load', handleLoad);
+                                img.removeEventListener('error', handleError);
+                            }
+                            if (img.complete) {
+                                if (!img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                return finish();
+                            }
+                            img.addEventListener('load', handleLoad, { once: true });
+                            img.addEventListener('error', handleError, { once: true });
+                            setTimeout(function() {
+                                cleanup();
+                                if (!img.complete || !img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                finish();
+                            }, 2500);
+                        });
+                    }));
+
+                    await new Promise(function(resolve) {
+                        requestAnimationFrame(function() {
+                            requestAnimationFrame(resolve);
+                        });
+                    });
+                }
+
                 function getInvoiceMonth(monthOverride) {
                     const monthInput = document.getElementById('invoiceMonth');
                     const modalInput = document.getElementById('invoiceMonthModal');
@@ -4410,9 +8788,15 @@ renderWeeklyChart(data);
                         const qty = Number(it.quantity) || 0;
                         const price = Number(it.price) || 0;
                         const total = Number(it.total) || 0;
+                        const metaBits = [];
+                        if (it.tripId) metaBits.push('Trip: ' + String(it.tripId));
+                        if (it.date) metaBits.push('Date: ' + String(it.date));
                         return ''
                             + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
-                            +   '<td style="border:1px solid #0f172a;padding:7px;vertical-align:top;word-break:break-word;">' + escapeHtml(it.itemName || 'Service') + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;vertical-align:top;word-break:break-word;">'
+                            +     '<div style="font-weight:700;">' + escapeHtml(it.itemName || 'Service') + '</div>'
+                            +     (metaBits.length ? '<div style="margin-top:4px;font-size:10px;color:#475569;">' + escapeHtml(metaBits.join(' | ')) + '</div>' : '')
+                            +   '</td>'
                             +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + qty.toFixed(2) + '</td>'
                             +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + formatInr(price) + '</td>'
                             +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;font-weight:700;">' + formatInr(total) + '</td>'
@@ -4421,9 +8805,10 @@ renderWeeklyChart(data);
                 }
 
                 function buildInvoiceHtml(model) {
-                    const logoHtml = model.companyLogoUrl
-                        ? '<img src="' + escapeHtml(model.companyLogoUrl) + '" alt="Company Logo" style="width:44px;height:44px;object-fit:contain;border:1px solid #0f172a;padding:4px;background:#fff;" crossorigin="anonymous">'
-                        : '<div style="width:44px;height:44px;border:1px solid #0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;">T</div>';
+                    const logoUrl = resolveInvoiceAssetUrl(model.companyLogoUrl);
+                    const logoHtml = logoUrl
+                        ? '<img src="' + escapeHtml(logoUrl) + '" alt="Company Logo" style="width:44px;height:44px;object-fit:contain;border:1px solid #0f172a;padding:4px;background:#fff;" crossorigin="anonymous" referrerpolicy="no-referrer">'
+                        : createInvoiceLogoFallbackHtml();
 
                     return ''
                         + '<div id="invoiceDocument" style="width:190mm;min-height:277mm;margin:0 auto;padding:0;background:#fff;color:#0f172a;font-size:12px;line-height:1.45;box-sizing:border-box;">'
@@ -4447,6 +8832,7 @@ renderWeeklyChart(data);
                         +       '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;">Bill To</div>'
                         +       '<div><span style="font-weight:700;">Customer Name:</span> ' + escapeHtml(model.customerName) + '</div>'
                         +       '<div><span style="font-weight:700;">Contact Details:</span> ' + escapeHtml(model.customerContact || 'N/A') + '</div>'
+                        +       '<div><span style="font-weight:700;">Prepared By:</span> ' + escapeHtml(model.signatoryName || 'Tripset User') + '</div>'
                         +     '</div>'
 
                         +     '<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8mm;">'
@@ -4498,6 +8884,8 @@ renderWeeklyChart(data);
                     const rawItems = Array.isArray(data.items) ? data.items : [];
                     const items = rawItems.map(function(it) {
                         return {
+                            tripId: String(it.tripId || ''),
+                            date: String(it.date || ''),
                             itemName: String(it.itemName || 'Service'),
                             quantity: Number(it.quantity) || 0,
                             price: Number(it.price) || 0,
@@ -4544,33 +8932,49 @@ renderWeeklyChart(data);
                     return {
                         month: month,
                         html: html,
-                        content: content
+                        model: model
                     };
                 }
 
                 async function downloadInvoice(monthOverride) {
                     const container = document.getElementById('invoiceContainer');
+                    let exportRoot = null;
                     try {
                         showToast(t('toast.generatingInvoice'));
                         const prepared = await prepareInvoice(monthOverride);
                         if (!prepared) return;
 
                         if (container) container.classList.remove('hidden');
+                        exportRoot = createInvoiceExportRoot(prepared.html);
+                        await waitForInvoiceRender(exportRoot);
+                        const exportTarget = exportRoot.querySelector('#invoiceDocument') || exportRoot;
 
                         await html2pdf().set({
                             margin: [10, 10, 10, 10],
                             filename: 'Invoice_' + prepared.month + '.pdf',
                             image: { type: 'jpeg', quality: 0.98 },
-                            html2canvas: { scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff' },
+                            html2canvas: {
+                                scale: 2,
+                                useCORS: true,
+                                allowTaint: false,
+                                backgroundColor: '#ffffff',
+                                scrollX: 0,
+                                scrollY: 0,
+                                width: exportTarget.scrollWidth,
+                                windowWidth: exportTarget.scrollWidth
+                            },
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
                             pagebreak: { mode: ['css', 'legacy'], avoid: ['tr'] }
-                        }).from(prepared.content).save();
+                        }).from(exportTarget).save();
 
                         showToast(t('toast.invoiceDownloaded'));
                     } catch (e) {
                         console.error('INVOICE DOWNLOAD ERROR:', e);
                         showToast(t('toast.invoiceGenerationFailed'));
                     } finally {
+                        if (exportRoot && exportRoot.parentNode) {
+                            exportRoot.parentNode.removeChild(exportRoot);
+                        }
                         if (container) container.classList.add('hidden');
                     }
                 }
@@ -4603,6 +9007,11 @@ renderWeeklyChart(data);
                 };
 
                 window.generateInvoice = function(monthOverride) {
+                    if (window.appFeatureFlags && window.appFeatureFlags.pdfEnabled === false) {
+                        showToast('PDF download disabled by admin');
+                        return Promise.resolve();
+                    }
+                    window.trackReportDownload('invoice-pdf');
                     return downloadInvoice(monthOverride);
                 };
             })();

@@ -1,0 +1,419 @@
+html,
+body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+body {
+    background:
+        radial-gradient(circle at top left, rgba(249, 115, 22, 0.16), transparent 24%),
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 22%),
+        linear-gradient(180deg, #020617 0%, #0f172a 100%);
+    color: #e2e8f0;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+.admin-sidebar-open {
+    overflow: hidden;
+}
+
+.admin-title {
+    font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: -0.04em;
+}
+
+.admin-sidebar {
+    transition: transform 0.24s ease;
+}
+
+.admin-sidebar-btn.active {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.22), rgba(251, 146, 60, 0.12));
+    border-color: rgba(249, 115, 22, 0.32);
+    color: #fff7ed;
+}
+
+.admin-card {
+    background: rgba(15, 23, 42, 0.86);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    box-shadow: 0 18px 50px rgba(2, 6, 23, 0.28);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.admin-section {
+    display: none;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.admin-section.active {
+    display: block;
+}
+
+.admin-table th {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.94);
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 0.9rem 1rem;
+    text-align: left;
+}
+
+.admin-table td {
+    border-top: 1px solid rgba(148, 163, 184, 0.08);
+    vertical-align: top;
+}
+
+.admin-table tr:hover td {
+    background: rgba(249, 115, 22, 0.05);
+}
+
+.admin-modal {
+    display: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.admin-modal.open {
+    display: flex;
+}
+
+.admin-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.3rem 0.7rem;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.admin-badge-orange {
+    background: rgba(249, 115, 22, 0.14);
+    color: #fdba74;
+}
+
+.admin-badge-emerald {
+    background: rgba(16, 185, 129, 0.14);
+    color: #6ee7b7;
+}
+
+.admin-badge-rose {
+    background: rgba(251, 113, 133, 0.14);
+    color: #fecdd3;
+}
+
+.admin-badge-slate {
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+}
+
+.admin-toast {
+    display: none;
+}
+
+.admin-toast.show {
+    display: block;
+}
+
+.admin-empty {
+    border: 1px dashed rgba(148, 163, 184, 0.2);
+    background: rgba(2, 6, 23, 0.28);
+}
+
+.admin-chart-shell canvas {
+    width: 100% !important;
+}
+
+main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+main > * {
+    min-width: 0;
+}
+
+main .grid,
+main .flex,
+main .space-y-3,
+main .space-y-4,
+main .space-y-5 {
+    min-width: 0;
+}
+
+.admin-card .grid,
+.admin-card .flex {
+    min-width: 0;
+}
+
+.admin-card input,
+.admin-card select,
+.admin-card textarea,
+.admin-card button {
+    max-width: 100%;
+}
+
+#adminUserModal,
+#adminCompanyModal {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+#adminUserModal > .admin-card,
+#adminCompanyModal > .admin-card {
+    width: min(100%, 64rem);
+    max-width: calc(100vw - 2rem);
+    min-width: 0;
+    max-height: calc(100vh - 2rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+#adminUserModal .grid,
+#adminCompanyModal .grid,
+#adminUserModal .flex,
+#adminCompanyModal .flex,
+#adminUserModal > .admin-card > div,
+#adminCompanyModal > .admin-card > div {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#adminUserModal .rounded-3xl,
+#adminCompanyModal .rounded-3xl,
+#adminUserModal input,
+#adminCompanyModal input {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#adminUserStatusText,
+#adminUserModalCopy,
+#adminUserRecentEntries,
+#adminUserRecentEntries > div,
+#adminUserRecentEntries .flex,
+#adminUserRecentEntries .text-sm,
+#adminUserRecentEntries .text-xs {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#adminUserRecentEntries {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+@media (max-width: 1279px) {
+    .admin-card {
+        box-shadow: 0 14px 36px rgba(2, 6, 23, 0.24);
+    }
+}
+
+@media (max-width: 1024px) {
+    #adminSidebar {
+        transform: translateX(-110%);
+        width: min(86vw, 320px);
+        max-width: 320px;
+    }
+
+    body.admin-sidebar-open #adminSidebar {
+        transform: translateX(0);
+    }
+
+    body.admin-sidebar-open #adminSidebarOverlay {
+        display: block;
+    }
+}
+
+@media (max-width: 768px) {
+    body {
+        background:
+            radial-gradient(circle at top left, rgba(249, 115, 22, 0.18), transparent 22%),
+            linear-gradient(180deg, #020617 0%, #0f172a 100%);
+    }
+
+    .admin-title {
+        letter-spacing: -0.03em;
+    }
+
+    header h2.admin-title {
+        font-size: 2rem !important;
+        line-height: 1.05;
+    }
+
+    main {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        overflow-x: hidden;
+    }
+
+    .admin-card {
+        border-radius: 1.25rem !important;
+    }
+
+    .admin-badge {
+        font-size: 10px;
+        padding: 0.28rem 0.6rem;
+    }
+
+    .admin-toast {
+        left: 0.75rem;
+        right: 0.75rem;
+        bottom: 0.75rem;
+        width: auto;
+        max-width: none;
+    }
+
+    #admin-section-users > .admin-card > div:first-child,
+    #admin-section-companies > .admin-card > div:first-child,
+    #admin-section-entries > .admin-card > div:first-child,
+    #admin-section-reports > .admin-card > div:first-child {
+        gap: 0.9rem !important;
+    }
+
+    #admin-section-users input,
+    #admin-section-companies input,
+    #admin-section-entries input,
+    #admin-section-entries select,
+    #admin-section-users button,
+    #admin-section-companies button,
+    #admin-section-entries button,
+    #admin-section-reports button {
+        width: 100%;
+    }
+
+    #admin-section-users .no-pdf,
+    #admin-section-companies .no-pdf,
+    #admin-section-entries .no-pdf,
+    #admin-section-reports .no-pdf {
+        justify-content: stretch;
+    }
+
+    .admin-table,
+    .admin-table tbody,
+    .admin-table tr,
+    .admin-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .admin-table {
+        min-width: 0 !important;
+    }
+
+    .admin-table thead {
+        display: none;
+    }
+
+    .admin-table tbody {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .admin-table tr {
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: 1rem;
+        background: rgba(2, 6, 23, 0.5);
+    }
+
+    .admin-table td {
+        display: grid;
+        grid-template-columns: minmax(92px, 110px) minmax(0, 1fr);
+        gap: 0.75rem;
+        padding: 0.8rem 0.9rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.08);
+    }
+
+    .admin-table td:first-child {
+        border-top: 0;
+    }
+
+    .admin-table td::before {
+        content: attr(data-label);
+        font-size: 0.65rem;
+        line-height: 1.2;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #94a3b8;
+    }
+
+    .admin-table td.no-pdf .flex {
+        justify-content: flex-start;
+    }
+
+    .admin-table td.no-pdf button {
+        width: auto !important;
+    }
+
+    #adminUserModal,
+    #adminCompanyModal {
+        align-items: flex-end;
+        padding: 0.5rem;
+    }
+
+    #adminUserModal > .admin-card,
+    #adminCompanyModal > .admin-card {
+        width: 100%;
+        max-width: 100%;
+        max-height: calc(100vh - 1rem);
+        overflow-x: hidden;
+        overflow-y: auto;
+        border-bottom-left-radius: 1rem !important;
+        border-bottom-right-radius: 1rem !important;
+    }
+
+    #adminUserModal .grid,
+    #adminCompanyModal .grid {
+        gap: 0.75rem !important;
+    }
+}
+
+@media (max-width: 520px) {
+    .admin-table td {
+        grid-template-columns: 1fr;
+        gap: 0.35rem;
+    }
+
+    .admin-table td::before {
+        margin-bottom: 0.05rem;
+    }
+
+    #adminUserModal > .admin-card,
+    #adminCompanyModal > .admin-card {
+        width: 100%;
+        padding: 1rem !important;
+    }
+}
+
+@media print {
+    .no-pdf,
+    #adminSidebar,
+    header {
+        display: none !important;
+    }
+
+    body {
+        background: #ffffff;
+        color: #111827;
+    }
+}
