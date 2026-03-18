@@ -406,7 +406,7 @@ main .space-y-5 {
 }
 
 @media print {
-    .no-pdf,
+.no-pdf,
     #adminSidebar,
     header {
         display: none !important;
@@ -416,4 +416,69 @@ main .space-y-5 {
         background: #ffffff;
         color: #111827;
     }
+}
+
+/* Invoice Preview Modal Styles */
+#invoicePreviewModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+#invoicePreviewModal.open {
+    display: flex;
+}
+
+#invoicePreviewModal .invoice-modal-content {
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 48rem;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#invoicePreviewModal .invoice-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff7ed;
+}
+
+#invoicePreviewModal .invoice-modal-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+#invoicePreviewModal .invoice-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    background: #f1f5f9;
+}
+
+#invoicePreviewModal .invoice-preview-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    color: #64748b;
+}
+
+#invoicePreviewModal .invoice-preview-empty {
+    text-align: center;
+    padding: 3rem;
+    color: #94a3b8;
 }

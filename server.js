@@ -123,11 +123,13 @@ const PWA_ASSET_VERSION = process.env.PWA_ASSET_VERSION || '20260310c';
     // Serve static files after explicit PWA routes so manifest/sw headers stay controlled.
     app.use(express.static(__dirname));
 
-
     // --- MONGODB CONNECTION ---
     mongoose.connect(mongoURI)
         .then(() => console.log("Kamlesh Bhai, MongoDB Connected! ✅"))
-        .catch(err => console.error("Connection error: ", err));
+        .catch(err => {
+            console.error("MongoDB Connection Error:", err.message);
+            // Don't exit - let the server continue running
+        });
 
     // MongoDB Schema
     const tripSchema = new mongoose.Schema({
@@ -1649,27 +1651,41 @@ async function getDbContextForRequest(req) {
     });
 
     async function requireAuth(req, res, next) {
+        if (req.path === '/login' || req.path === '/signup') {
+            return next();
+        }
+
         try {
             const account = resolveSessionAccount(req);
-            if (!account) {
-                return res.redirect(302, '/login');
-            }
-            if (account.isDynamicUser) {
-                const user = await SignupUser.findOne({ userKey: account.userKey, isActive: true }).lean();
-                if (!user || user.isBlocked) {
-                    clearSessionAccount(req);
-                    return res.redirect(302, '/login');
-                }
-            }
-            if (await isMaintenanceModeEnabled()) {
-                return sendMaintenancePage(res);
-            }
-            req.authAccount = account;
-            return next();
-        } catch (err) {
+
+        if (!account) {
             return res.redirect(302, '/login');
         }
+
+        if (account.isDynamicUser) {
+            const user = await SignupUser.findOne({
+                userKey: account.userKey,
+                isActive: true
+            }).lean();
+
+            if (!user || user.isBlocked) {
+                clearSessionAccount(req);
+                return res.redirect(302, '/login');
+            }
+        }
+
+        if (await isMaintenanceModeEnabled()) {
+            return sendMaintenancePage(res);
+        }
+
+        req.authAccount = account;
+        return next();
+
+    } catch (err) {
+        console.error('requireAuth error:', err);
+        return res.redirect(302, '/login');
     }
+}
 
     async function requireApiAuth(req, res, next) {
         try {
@@ -4617,7 +4633,7 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
         </main>
     </div>
 
-    <div id="adminToast" class="admin-toast fixed bottom-4 right-4 z-[80] rounded-2xl border border-orange-400/20 bg-slate-950/95 px-5 py-4 font-bold text-white shadow-2xl"></div>
+<div id="adminToast" class="admin-toast fixed bottom-4 right-4 z-[80] rounded-2xl border border-orange-400/20 bg-slate-950/95 px-5 py-4 font-bold text-white shadow-2xl"></div>
 
     <div id="adminUserModal" class="admin-modal fixed inset-0 z-[90] items-center justify-center bg-slate-950/70 p-4">
         <div class="admin-card w-full max-w-4xl rounded-3xl p-5">
@@ -4677,10 +4693,21 @@ app.put('/api/trips/:id', requireApiAuth, async (req, res) => {
     });
 
     // Login page
-    app.get('/login', (req, res) => {
+    app.get('/login', async (req, res) => {
         if (req.session && req.session.isAuthenticated) {
-            return res.redirect(302, '/');
+            const account = resolveSessionAccount(req);
+            if (account) {
+                if (!account.isDynamicUser) {
+                    return res.redirect(302, '/');
+                }
+                const user = await SignupUser.findOne({ userKey: account.userKey, isActive: true }).lean();
+                if (user && !user.isBlocked) {
+                    return res.redirect(302, '/');
+                }
+                clearSessionAccount(req);
+            }
         }
+
         const csp = [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
@@ -6779,7 +6806,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
 
         function isHomeAnnouncementContext() {
             var pathname = String((window.location && window.location.pathname) || '/').trim() || '/';
-            var normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
+            var normalizedPath = pathname === '/' ? '/' : pathname.replace(new RegExp('/+$'), '');
             if (normalizedPath !== '/') return false;
             var homeTab = document.getElementById('home');
             return !!(homeTab && homeTab.classList.contains('active'));
@@ -7039,16 +7066,11 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                     cache: 'no-store',
                     credentials: 'include'
                 });
-                if (!res.ok) {
-                    console.warn('🔐 bootstrapAuth: Status check failed (HTTP ' + res.status + ').');
-                    window.location.href = '/login';
-                    return;
-                }
                 var s = await res.json();
                 console.log('🔐 bootstrapAuth: Status response:', JSON.stringify(s));
-                if (!s.isAuthenticated) {
+                if (!res.ok || !s || !s.isAuthenticated) {
                     console.log('🔐 bootstrapAuth: Not authenticated, redirecting to login');
-                    window.location.href = '/login';
+                    showLoginScreen();
                     return;
                 }
                 setAuthenticatedIdentity(s);
@@ -7057,7 +7079,7 @@ class="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold shadow-md">
                 showAuthenticatedApp('home');
             } catch (e) {
                 console.error('🔐 bootstrapAuth: Error:', e);
-                window.location.href = '/login';
+                showLoginScreen();
             }
         };
 
@@ -7303,11 +7325,11 @@ function showInstallPromptIfNeeded() {
                     if (window.bootstrapAuth) {
                         window.bootstrapAuth().catch(function(err) {
                             console.error('🔐 startAuthFlow: bootstrapAuth error:', err);
-                            window.location.href = '/login';
+                            showLoginScreen();
                         });
                     } else {
                         console.error('🔐 startAuthFlow: bootstrapAuth function not found! Showing login screen.');
-                        window.location.href = '/login';
+                        showLoginScreen();
                     }
                 }, 200);
 
@@ -7319,7 +7341,7 @@ function showInstallPromptIfNeeded() {
                     var appHidden = !app || window.getComputedStyle(app).display === 'none';
                     if (loginHidden && appHidden) {
                         console.warn('🔐 startAuthFlow: All screens hidden. Forcing login fallback.');
-                        window.location.href = '/login';
+                        showLoginScreen();
                     }
                 }, 1800);
             });
@@ -7338,39 +7360,47 @@ let profitChartInstance = null;
 let weeklyChartInstance = null;
 
 // Enhanced Service Worker Registration
-
-
-if ('serviceWorker' in navigator && (window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    var swUrl = '/sw.js?v=${PWA_ASSET_VERSION}';
-    navigator.serviceWorker.register(swUrl, { scope: '/' })
-        .then(function(registration) {
-            console.log("SW Registered ✅");
-            registration.update();
-            
-            // Check for updates periodically
-            setInterval(function() {
-                registration.update();
-            }, 60000); // Check every minute
-            
-            // Handle updates
-            registration.addEventListener('updatefound', function() {
-                var newWorker = registration.installing;
-                newWorker.addEventListener('statechange', function() {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        // New service worker available
-                        showToast(t('toast.newVersion'), 5000);
-                    }
+var isLocalhostApp = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+if ('serviceWorker' in navigator) {
+    if (isLocalhostApp) {
+        navigator.serviceWorker.getRegistrations()
+            .then(function(registrations) {
+                registrations.forEach(function(registration) {
+                    registration.unregister();
                 });
+            })
+            .catch(function(err) {
+                console.log('SW cleanup skipped on localhost:', err);
             });
-        })
-        .catch(function(err) {
-            console.log("SW Registration failed (this is OK if sw.js doesn't exist):", err);
+    } else if (window.isSecureContext) {
+        var swUrl = '/sw.js';
+        navigator.serviceWorker.register(swUrl, { scope: '/' })
+            .then(function(registration) {
+                console.log("SW Registered ✅");
+                registration.update();
+
+                setInterval(function() {
+                    registration.update();
+                }, 60000);
+
+                registration.addEventListener('updatefound', function() {
+                    var newWorker = registration.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            showToast(t('toast.newVersion'), 5000);
+                        }
+                    });
+                });
+            })
+            .catch(function(err) {
+                console.log("SW Registration failed (this is OK if sw.js doesn't exist):", err);
+            });
+
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            window.location.reload();
         });
-    
-    // Listen for controller change (app updated)
-    navigator.serviceWorker.addEventListener('controllerchange', function() {
-        window.location.reload();
-    });
+    }
 }
 
 
@@ -7741,9 +7771,21 @@ window.exportExcel = async function () {
 
     showToast(t('toast.preparingExcel'));
 
-    const res = await fetch('/api/trips');
-    const data = await res.json();
-
+    let data;
+    try {
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            throw new Error('Failed to load trips');
+        }
+        data = await res.json();
+    } catch (err) {
+        console.error('Excel export error:', err);
+        showToast('Failed to load trips');
+        return;
+    }
     if (!data.length) {
         showToast(t('toast.noData'));
         return;
@@ -7779,7 +7821,10 @@ window.downloadBackup = async function() {
     try {
         showToast(t('toast.preparingBackup'));
         
-        const res = await fetch('/api/trips');
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
         if (!res.ok) {
             throw new Error('Failed to fetch trips');
         }
@@ -7807,7 +7852,7 @@ window.downloadBackup = async function() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = \`trips_backup_\${new Date().toISOString().split('T')[0]}.json\`;
+        a.download = 'trips_backup_' + new Date().toISOString().split('T')[0] + '.json';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -7882,7 +7927,7 @@ window.handleRestoreBackup = async function(event) {
         trips.forEach((trip, index) => {
             for (let field of requiredFields) {
                 if (trip[field] === undefined || trip[field] === null) {
-                    invalidTrips.push(\`Trip \${index + 1}: missing \${field}\`);
+                    invalidTrips.push('Trip ' + (index + 1) + ': missing ' + field);
                 }
             }
         });
@@ -7905,13 +7950,19 @@ window.handleRestoreBackup = async function(event) {
         // Send to API
         const res = await fetch('/api/trips/bulk', {
             method: 'POST',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ trips: trips })
         });
 
-        const result = await res.json();
+        let result = {};
+        try {
+            result = await res.json();
+        } catch (parseErr) {
+            result = {};
+        }
 
         if (res.ok) {
             showToast(t('toast.restoredTrips', { count: result.inserted }));
@@ -8141,10 +8192,21 @@ window.closeEditModal = function() {
             };
 
 async function fetchTrips() {
-
-    const res = await fetch('/api/trips');
-    const data = await res.json();
-
+    let data;
+    try {
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            throw new Error('Failed to load trips');
+        }
+        data = await res.json();
+    } catch (err) {
+        console.error('Trips API error:', err);
+        showToast('Failed to load trip data');
+        return;
+    }
     const entriesMonth = document.getElementById('entriesMonthFilter')?.value;
     const companyMonth = document.getElementById('monthFilter')?.value;
     const dashMonth = document.getElementById('dashMonthFilter')?.value;
@@ -8509,97 +8571,232 @@ renderWeeklyChart(data);
                 setTimeout(() => t.classList.add('hidden'), duration || 3000);
             }
 
+            function createPdfCaptureSurface(widthPx) {
+                const host = document.createElement('div');
+                host.setAttribute('data-pdf-capture-surface', '1');
+                host.style.position = 'fixed';
+                host.style.inset = '0';
+                host.style.zIndex = '2147483647';
+                host.style.display = 'flex';
+                host.style.justifyContent = 'center';
+                host.style.alignItems = 'flex-start';
+                host.style.padding = '16px';
+                host.style.overflow = 'auto';
+                host.style.pointerEvents = 'none';
+                host.style.background = 'rgba(255,255,255,0.01)';
+                host.style.boxSizing = 'border-box';
+
+                const stage = document.createElement('div');
+                stage.style.width = widthPx;
+                stage.style.maxWidth = widthPx;
+                stage.style.background = '#ffffff';
+                stage.style.color = '#0f172a';
+                stage.style.boxSizing = 'border-box';
+                stage.style.padding = '0';
+                stage.style.margin = '0';
+
+                host.appendChild(stage);
+                document.body.appendChild(host);
+                return { host: host, stage: stage };
+            }
+
+            function forcePdfLightStyles(root) {
+                if (!root) return;
+                root.style.setProperty('background', '#ffffff', 'important');
+                root.style.setProperty('color', '#0f172a', 'important');
+                root.querySelectorAll('*').forEach(function(el) {
+                    const inlineColor = el.style.color ? String(el.style.color) : '';
+                    const inlineBackground = el.style.background ? String(el.style.background) : '';
+                    const inlineBackgroundColor = el.style.backgroundColor ? String(el.style.backgroundColor) : '';
+                    el.style.setProperty('color', inlineColor || '#0f172a', 'important');
+                    if (inlineBackground) {
+                        el.style.setProperty('background', inlineBackground, 'important');
+                    } else if (inlineBackgroundColor) {
+                        el.style.setProperty('background-color', inlineBackgroundColor, 'important');
+                    }
+                    el.style.setProperty('text-shadow', 'none', 'important');
+                    el.style.setProperty('filter', 'none', 'important');
+                });
+            }
+
+            async function waitForPdfCapture(root) {
+                if (!root) return;
+                try {
+                    if (document.fonts && document.fonts.ready) {
+                        await document.fonts.ready;
+                    }
+                } catch (err) {}
+
+                const images = Array.from(root.querySelectorAll('img'));
+                await Promise.all(images.map(function(img) {
+                    return new Promise(function(resolve) {
+                        if (img.complete) {
+                            resolve();
+                            return;
+                        }
+                        function finish() {
+                            img.removeEventListener('load', finish);
+                            img.removeEventListener('error', finish);
+                            resolve();
+                        }
+                        img.addEventListener('load', finish, { once: true });
+                        img.addEventListener('error', finish, { once: true });
+                        setTimeout(finish, 2500);
+                    });
+                }));
+
+                await new Promise(function(resolve) {
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(resolve);
+                    });
+                });
+            }
+
+            function escapePdfText(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function formatPdfMoney(value) {
+                return '₹' + (Number(value) || 0).toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            function buildTripReportHtml(kind, trips) {
+                const safeTrips = Array.isArray(trips) ? trips : [];
+                const isCompanyReport = kind === 'company-entries';
+                const rate = window.getRate ? window.getRate() : 21;
+                const monthInput = document.getElementById(isCompanyReport ? 'monthFilter' : 'entriesMonthFilter');
+                const selectedMonth = monthInput && monthInput.value ? monthInput.value : '';
+                let totalKm = 0;
+                let totalEntryAmount = 0;
+                let totalCompanyAmount = 0;
+                let totalCng = 0;
+
+                const rowsHtml = safeTrips.length ? safeTrips.map(function(item) {
+                    const km = Number(item && item.km) || 0;
+                    const total = Number(item && item.total) || 0;
+                    const companyValue = km * rate;
+                    const cng = Number(item && item.cng) || 0;
+                    const other = Number(item && item.other) || 0;
+                    const otherExpense = Number(item && item.otherExpense) || 0;
+
+                    totalKm += km;
+                    totalEntryAmount += total;
+                    totalCompanyAmount += companyValue;
+                    totalCng += cng;
+
+                    if (isCompanyReport) {
+                        return ''
+                            + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(item && item.date ? item.date : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;font-weight:700;">' + escapePdfText(item && item.tripId ? item.tripId : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:center;">' + escapePdfText(item && item.person != null ? item.person : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickup) || '-') + ' -> ' + String((item && item.drop) || '-')) + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;">' + km.toFixed(2) + ' KM</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickupTime) || '-') + ' - ' + String((item && item.dropTime) || '-')) + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;font-weight:700;">' + formatPdfMoney(companyValue) + '</td>'
+                            + '</tr>';
+                    }
+
+                    return ''
+                        + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(item && item.date ? item.date : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;font-weight:700;">' + escapePdfText(item && item.tripId ? item.tripId : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:center;">' + escapePdfText(item && item.person != null ? item.person : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickup) || '-') + ' -> ' + String((item && item.drop) || '-')) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;">' + km.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickupTime) || '-') + ' - ' + String((item && item.dropTime) || '-')) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">'
+                        +     'Other: ' + (other).toFixed(2) + '<br>'
+                        +     'CNG: ' + (cng).toFixed(2) + '<br>'
+                        +     'Expense: ' + (otherExpense).toFixed(2)
+                        +   '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;font-weight:700;">' + formatPdfMoney(total) + '</td>'
+                        + '</tr>';
+                }).join('') : (''
+                    + '<tr>'
+                    +   '<td colspan="' + (isCompanyReport ? '7' : '8') + '" style="border:1px solid #cbd5e1;padding:16px;text-align:center;color:#64748b;font-size:12px;">No trips found for the selected period.</td>'
+                    + '</tr>');
+
+                const footerHtml = isCompanyReport
+                    ? (''
+                        + '<tr>'
+                        +   '<td colspan="4" style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">Trips: ' + safeTrips.length + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">' + totalKm.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">Grand Total</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:900;text-align:right;">' + formatPdfMoney(totalCompanyAmount) + '</td>'
+                        + '</tr>')
+                    : (''
+                        + '<tr>'
+                        +   '<td colspan="4" style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">Trips: ' + safeTrips.length + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">' + totalKm.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">CNG: ' + totalCng.toFixed(2) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">Grand Total</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:900;text-align:right;">' + formatPdfMoney(totalEntryAmount) + '</td>'
+                        + '</tr>');
+
+                return ''
+                    + '<div style="width:100%;background:#ffffff;color:#0f172a;font-family:\\'Hind Vadodara\\',\\'Segoe UI\\',Arial,sans-serif;box-sizing:border-box;">'
+                    +   '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">'
+                    +     '<div style="font-size:18px;font-weight:900;color:#0f172a;">Tripset - ' + (isCompanyReport ? 'Company Report' : 'Entry Report') + '</div>'
+                    +     '<div style="font-size:11px;color:#475569;margin-top:4px;">Generated: ' + escapePdfText(new Date().toLocaleString('en-IN')) + '</div>'
+                    +     '<div style="font-size:11px;color:#475569;margin-top:2px;">User: ' + escapePdfText(String(window.currentUserDisplayName || '')) + '</div>'
+                    +     (selectedMonth ? '<div style="font-size:11px;color:#475569;margin-top:2px;">Month: ' + escapePdfText(selectedMonth) + '</div>' : '')
+                    +   '</div>'
+                    +   '<table style="width:100%;border-collapse:collapse;table-layout:fixed;background:#ffffff;">'
+                    +     '<thead style="background:' + (isCompanyReport ? '#eef2ff' : '#0f172a') + ';color:' + (isCompanyReport ? '#1e293b' : '#f8fafc') + ';">'
+                    +       '<tr>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Date</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">ID</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:center;">P</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Route</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">KM</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Time</th>'
+                    +         (isCompanyReport
+                                ? '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">Total</th>'
+                                : '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Other Details</th><th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">Total</th>')
+                    +       '</tr>'
+                    +     '</thead>'
+                    +     '<tbody>' + rowsHtml + '</tbody>'
+                    +     '<tfoot style="background:' + (isCompanyReport ? '#312e81' : '#0f172a') + ';color:#ffffff;">' + footerHtml + '</tfoot>'
+                    +   '</table>'
+                    + '</div>';
+            }
+
             window.downloadPDF = async function(id) {
                 if (window.appFeatureFlags && window.appFeatureFlags.pdfEnabled === false) {
                     showToast('PDF download disabled by admin');
                     return;
                 }
-                const sourceEl = document.getElementById(id);
-                if (!sourceEl) return;
+                const trips = Array.isArray(window.currentTrips) ? window.currentTrips.slice() : [];
+                if (!trips.length) {
+                    showToast(t('toast.noData'));
+                    return;
+                }
 
                 const reportLabel = id === 'company-entries' ? 'Company Report' : 'Entry Report';
                 const filenamePrefix = id === 'company-entries' ? 'Company_Report' : 'Entry_Report';
                 const todayToken = new Date().toISOString().slice(0, 10);
                 const filename = filenamePrefix + '_' + todayToken + '.pdf';
 
-                const exportRoot = document.createElement('div');
-                exportRoot.style.position = 'fixed';
-                exportRoot.style.left = '-10000px';
-                exportRoot.style.top = '0';
-                exportRoot.style.width = '794px';
-                exportRoot.style.padding = '16px';
-                exportRoot.style.background = '#ffffff';
-                exportRoot.style.color = '#0f172a';
-                exportRoot.style.fontFamily = "'Hind Vadodara','Inter',sans-serif";
+                const surface = createPdfCaptureSurface('794px');
+                const exportRoot = surface.host;
+                const exportStage = surface.stage;
+                exportStage.style.padding = '16px';
+                exportStage.style.fontFamily = "'Hind Vadodara','Inter',sans-serif";
 
-                const clone = sourceEl.cloneNode(true);
-                clone.style.background = '#ffffff';
-                clone.style.color = '#0f172a';
-                clone.style.border = '1px solid #e2e8f0';
-                clone.style.borderRadius = '12px';
-                clone.style.boxShadow = 'none';
-                clone.style.overflow = 'visible';
-                clone.style.width = '100%';
-
-                clone.querySelectorAll('.no-pdf,button,input,select,textarea,canvas,svg').forEach(function(el) {
-                    el.remove();
-                });
-                clone.querySelectorAll('#dashboard,[id*="chart"],[id*="Chart"],.chart-container').forEach(function(el) {
-                    el.remove();
-                });
-
-                clone.querySelectorAll('table').forEach(function(tbl) {
-                    tbl.style.width = '100%';
-                    tbl.style.borderCollapse = 'collapse';
-                    tbl.style.tableLayout = 'fixed';
-                    tbl.style.background = '#ffffff';
-                });
-                clone.querySelectorAll('thead').forEach(function(head) {
-                    if (id === 'company-entries') {
-                        head.style.background = '#eef2ff';
-                        head.style.color = '#1e293b';
-                    } else {
-                        head.style.background = '#0f172a';
-                        head.style.color = '#f8fafc';
-                    }
-                });
-                clone.querySelectorAll('tfoot').forEach(function(foot) {
-                    if (id === 'company-entries') {
-                        foot.style.background = '#312e81';
-                        foot.style.color = '#ffffff';
-                    } else {
-                        foot.style.background = '#0f172a';
-                        foot.style.color = '#ffffff';
-                    }
-                });
-                clone.querySelectorAll('th,td').forEach(function(cell) {
-                    cell.style.border = '1px solid #cbd5e1';
-                    cell.style.padding = '7px';
-                    cell.style.fontSize = '11px';
-                    cell.style.verticalAlign = 'top';
-                    cell.style.wordBreak = 'break-word';
-                });
-                clone.querySelectorAll('tr').forEach(function(row) {
-                    row.style.pageBreakInside = 'avoid';
-                });
-
-                const header = document.createElement('div');
-                header.style.marginBottom = '12px';
-                header.style.padding = '10px 12px';
-                header.style.border = '1px solid #e2e8f0';
-                header.style.borderRadius = '10px';
-                header.style.background = '#f8fafc';
-                header.innerHTML = ''
-                    + '<div style="font-size:18px;font-weight:900;color:#0f172a;">Tripset - ' + reportLabel + '</div>'
-                    + '<div style="font-size:11px;color:#475569;margin-top:2px;">Generated: ' + new Date().toLocaleString('en-IN') + '</div>'
-                    + '<div style="font-size:11px;color:#475569;">User: ' + String(window.currentUserDisplayName || '') + '</div>';
-
-                exportRoot.appendChild(header);
-                exportRoot.appendChild(clone);
-                document.body.appendChild(exportRoot);
+                exportStage.innerHTML = buildTripReportHtml(id, trips);
 
                 try {
                     showToast(t('toast.pdfGenerating'));
+                    await waitForPdfCapture(exportStage);
                     await html2pdf().set({
                         margin: [8, 8, 10, 8],
                         filename: filename,
@@ -8608,9 +8805,12 @@ renderWeeklyChart(data);
                             scale: 2,
                             useCORS: true,
                             allowTaint: false,
+                            foreignObjectRendering: true,
                             backgroundColor: '#ffffff',
                             scrollX: 0,
-                            scrollY: 0
+                            scrollY: 0,
+                            width: exportStage.scrollWidth,
+                            windowWidth: exportStage.scrollWidth
                         },
                         jsPDF: {
                             unit: 'mm',
@@ -8618,8 +8818,8 @@ renderWeeklyChart(data);
                             orientation: 'portrait',
                             compress: true
                         },
-                        pagebreak: { mode: ['css', 'legacy'] }
-                    }).from(exportRoot).save();
+                        pagebreak: { mode: ['css', 'legacy', 'avoid-all'] }
+                    }).from(exportStage).save();
                     window.trackReportDownload(id === 'company-entries' ? 'company-pdf' : 'entries-pdf');
                     showToast(t('toast.downloadComplete'));
                 } catch (err) {
@@ -8683,24 +8883,16 @@ renderWeeklyChart(data);
                 }
 
                 function createInvoiceExportRoot(html) {
-                    const root = document.createElement('div');
+                    const surface = createPdfCaptureSurface('210mm');
+                    const root = surface.stage;
                     root.setAttribute('data-invoice-export-root', '1');
-                    root.style.position = 'fixed';
-                    root.style.left = '0';
-                    root.style.top = '0';
-                    root.style.width = '210mm';
-                    root.style.maxWidth = '210mm';
-                    root.style.padding = '0';
-                    root.style.margin = '0';
-                    root.style.background = '#ffffff';
-                    root.style.opacity = '1';
-                    root.style.pointerEvents = 'none';
-                    root.style.zIndex = '-1';
-                    root.style.overflow = 'hidden';
-                    root.style.boxSizing = 'border-box';
+                    root.style.setProperty('padding', '0', 'important');
+                    root.style.setProperty('margin', '0', 'important');
+                    root.style.setProperty('background', '#ffffff', 'important');
+                    root.style.setProperty('box-sizing', 'border-box', 'important');
                     root.innerHTML = html;
-                    document.body.appendChild(root);
-                    return root;
+                    forcePdfLightStyles(root);
+                    return surface;
                 }
 
                 function replaceInvoiceImageWithFallback(img) {
@@ -8764,11 +8956,7 @@ renderWeeklyChart(data);
                         });
                     }));
 
-                    await new Promise(function(resolve) {
-                        requestAnimationFrame(function() {
-                            requestAnimationFrame(resolve);
-                        });
-                    });
+                        await waitForPdfCapture(root);
                 }
 
                 function getInvoiceMonth(monthOverride) {
@@ -8867,20 +9055,130 @@ renderWeeklyChart(data);
                         + '</div>';
                 }
 
+                var currentInvoicePreviewMonth = '';
+
+                function renderInvoicePreviewState(message, isError) {
+                    const previewBody = document.getElementById('invoicePreviewBody');
+                    if (!previewBody) return;
+                    previewBody.innerHTML = ''
+                        + '<div style="min-height:240px;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;border:1px dashed '
+                        + (isError ? '#fca5a5' : '#cbd5e1')
+                        + ';border-radius:16px;background:'
+                        + (isError ? '#fff1f2' : '#f8fafc')
+                        + ';color:'
+                        + (isError ? '#b91c1c' : '#475569')
+                        + ';font-weight:700;">'
+                        + escapeHtml(message || 'Invoice preview is unavailable.')
+                        + '</div>';
+                }
+
+                window.openInvoicePreview = async function(monthOverride) {
+                    const previewModal = document.getElementById('invoicePreviewModal') || createInvoicePreviewModal();
+                    try {
+                        const month = getInvoiceMonth(monthOverride);
+                        currentInvoicePreviewMonth = month;
+                        if (!previewModal) return;
+                        previewModal.classList.remove('hidden');
+                        if (!month) {
+                            renderInvoicePreviewState('Invoice month is missing. Select a valid month first.', true);
+                            return;
+                        }
+
+                        renderInvoicePreviewState(t('toast.generatingInvoice') || 'Generating invoice...', false);
+                        const prepared = await prepareInvoice(month);
+                        if (!prepared) {
+                            renderInvoicePreviewState('Invoice data is unavailable for the selected month.', true);
+                            return;
+                        }
+
+                        const previewBody = document.getElementById('invoicePreviewBody');
+                        if (!previewBody || !prepared.html) {
+                            renderInvoicePreviewState('Invoice template is missing.', true);
+                            return;
+                        }
+
+                        previewBody.innerHTML = prepared.html;
+                    } catch (err) {
+                        console.error('Invoice preview error:', err);
+                        renderInvoicePreviewState((err && err.message) || 'Failed to generate invoice.', true);
+                    }
+                };
+
+                function createInvoicePreviewModal() {
+                    const modal = document.createElement('div');
+                    modal.id = 'invoicePreviewModal';
+                    modal.className = 'hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70';
+                    modal.style.padding = '20px';
+                    modal.style.boxSizing = 'border-box';
+                    modal.style.overflowY = 'auto';
+                    modal.innerHTML = ''
+                        + '<div style="background:#fff;border-radius:20px;box-shadow:0 24px 60px rgba(15,23,42,0.35);max-width:960px;width:min(96vw,960px);box-sizing:border-box;overflow:hidden;">'
+                        +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#fff7ed;">'
+                        +     '<div>'
+                        +       '<div style="font-size:18px;font-weight:900;color:#0f172a;">Invoice Preview</div>'
+                        +       '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Review before download</div>'
+                        +     '</div>'
+                        +     '<div style="display:flex;align-items:center;gap:8px;">'
+                        +       '<button onclick="window.closeInvoicePreview()" style="background:#ef4444;color:#fff;border:none;padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:700;">Close</button>'
+                        +       '<button onclick="window.downloadInvoiceFromPreview()" style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:700;">Download PDF</button>'
+                        +     '</div>'
+                        +   '</div>'
+                        +   '<div id="invoicePreviewBody" style="max-height:calc(90vh - 88px);overflow:auto;padding:20px;background:#f8fafc;"></div>'
+                        + '</div>';
+                    document.body.appendChild(modal);
+
+                    modal.addEventListener('click', function(e) {
+                        if (e.target === modal) {
+                            window.closeInvoicePreview();
+                        }
+                    });
+
+                    return modal;
+                }
+
+                window.closeInvoicePreview = function() {
+                    const modal = document.getElementById('invoicePreviewModal');
+                    if (modal) {
+                        modal.classList.add('hidden');
+                    }
+                    currentInvoicePreviewMonth = '';
+                    renderInvoicePreviewState('Invoice preview closed.', false);
+                };
+
+                window.downloadInvoiceFromPreview = function() {
+                    const month = currentInvoicePreviewMonth || getInvoiceMonth();
+                    if (!month) {
+                        renderInvoicePreviewState('Invoice month is missing. Select a valid month first.', true);
+                        return;
+                    }
+                    window.closeInvoicePreview();
+                    downloadInvoice(month);
+                };
+
                 async function prepareInvoice(monthOverride) {
                     const month = getInvoiceMonth(monthOverride);
                     if (!month) {
-                        showToast(t('toast.selectInvoiceMonth'));
                         return null;
                     }
 
-                    const res = await fetch('/api/invoice/' + month, { cache: 'no-store' });
+                    const res = await fetch('/api/invoice/' + encodeURIComponent(month), {
+                        cache: 'no-store',
+                        credentials: 'include'
+                    });
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (err) {
+                        data = null;
+                    }
                     if (!res.ok) {
-                        showToast(t('toast.invoiceFailed'));
+                        showToast((data && data.error) ? String(data.error) : t('toast.invoiceFailed'));
                         return null;
                     }
-
-                    const data = await res.json();
+                    if (!data || typeof data !== 'object') {
+                        showToast('Invoice data is unavailable');
+                        return null;
+                    }
                     const rawItems = Array.isArray(data.items) ? data.items : [];
                     const items = rawItems.map(function(it) {
                         return {
@@ -8938,16 +9236,16 @@ renderWeeklyChart(data);
 
                 async function downloadInvoice(monthOverride) {
                     const container = document.getElementById('invoiceContainer');
-                    let exportRoot = null;
+                    let exportSurface = null;
                     try {
                         showToast(t('toast.generatingInvoice'));
                         const prepared = await prepareInvoice(monthOverride);
                         if (!prepared) return;
 
                         if (container) container.classList.remove('hidden');
-                        exportRoot = createInvoiceExportRoot(prepared.html);
-                        await waitForInvoiceRender(exportRoot);
-                        const exportTarget = exportRoot.querySelector('#invoiceDocument') || exportRoot;
+                        exportSurface = createInvoiceExportRoot(prepared.html);
+                        await waitForInvoiceRender(exportSurface.stage);
+                        const exportTarget = exportSurface.stage.querySelector('#invoiceDocument') || exportSurface.stage;
 
                         await html2pdf().set({
                             margin: [10, 10, 10, 10],
@@ -8957,6 +9255,7 @@ renderWeeklyChart(data);
                                 scale: 2,
                                 useCORS: true,
                                 allowTaint: false,
+                                foreignObjectRendering: true,
                                 backgroundColor: '#ffffff',
                                 scrollX: 0,
                                 scrollY: 0,
@@ -8972,8 +9271,8 @@ renderWeeklyChart(data);
                         console.error('INVOICE DOWNLOAD ERROR:', e);
                         showToast(t('toast.invoiceGenerationFailed'));
                     } finally {
-                        if (exportRoot && exportRoot.parentNode) {
-                            exportRoot.parentNode.removeChild(exportRoot);
+                        if (exportSurface && exportSurface.host && exportSurface.host.parentNode) {
+                            exportSurface.host.parentNode.removeChild(exportSurface.host);
                         }
                         if (container) container.classList.add('hidden');
                     }

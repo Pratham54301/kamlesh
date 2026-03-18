@@ -93,6 +93,162 @@ function showAdminToast(message) {
     }, 3000);
 }
 
+function createAdminPdfCaptureSurface(widthPx) {
+    const host = document.createElement('div');
+    host.setAttribute('data-admin-pdf-surface', '1');
+    host.style.position = 'fixed';
+    host.style.inset = '0';
+    host.style.zIndex = '2147483647';
+    host.style.display = 'flex';
+    host.style.justifyContent = 'center';
+    host.style.alignItems = 'flex-start';
+    host.style.padding = '16px';
+    host.style.overflow = 'auto';
+    host.style.pointerEvents = 'none';
+    host.style.background = 'rgba(255,255,255,0.01)';
+    host.style.boxSizing = 'border-box';
+
+    const stage = document.createElement('div');
+    stage.style.width = widthPx;
+    stage.style.maxWidth = widthPx;
+    stage.style.background = '#ffffff';
+    stage.style.color = '#0f172a';
+    stage.style.boxSizing = 'border-box';
+
+    host.appendChild(stage);
+    document.body.appendChild(host);
+    return { host, stage };
+}
+
+const ADMIN_PDF_STYLE_PROPS = [
+    'display',
+    'position',
+    'width',
+    'height',
+    'min-width',
+    'min-height',
+    'max-width',
+    'max-height',
+    'margin',
+    'padding',
+    'border',
+    'border-top',
+    'border-right',
+    'border-bottom',
+    'border-left',
+    'border-radius',
+    'background',
+    'background-color',
+    'color',
+    'font',
+    'font-size',
+    'font-weight',
+    'font-family',
+    'line-height',
+    'letter-spacing',
+    'text-align',
+    'text-transform',
+    'text-decoration',
+    'white-space',
+    'word-break',
+    'overflow',
+    'overflow-x',
+    'overflow-y',
+    'box-shadow',
+    'box-sizing',
+    'opacity',
+    'visibility',
+    'transform'
+];
+
+function inlineAdminComputedStyles(source, target) {
+    if (!source || !target) return;
+    const computed = window.getComputedStyle(source);
+    ADMIN_PDF_STYLE_PROPS.forEach((prop) => {
+        target.style.setProperty(prop, computed.getPropertyValue(prop), 'important');
+    });
+    const sourceChildren = Array.from(source.children || []);
+    const targetChildren = Array.from(target.children || []);
+    sourceChildren.forEach((child, index) => {
+        if (targetChildren[index]) {
+            inlineAdminComputedStyles(child, targetChildren[index]);
+        }
+    });
+}
+
+async function waitForAdminPdfCapture(root) {
+    if (!root) return;
+    try {
+        if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+        }
+    } catch (err) {}
+
+    const images = Array.from(root.querySelectorAll('img'));
+    await Promise.all(images.map((img) => new Promise((resolve) => {
+        if (img.complete) {
+            resolve();
+            return;
+        }
+        function finish() {
+            img.removeEventListener('load', finish);
+            img.removeEventListener('error', finish);
+            resolve();
+        }
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', finish, { once: true });
+        setTimeout(finish, 2500);
+    })));
+
+    await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+}
+
+function buildAdminPdfSurfaceFromElement(source, widthPx) {
+    const surface = createAdminPdfCaptureSurface(widthPx);
+    const clone = source.cloneNode(true);
+    inlineAdminComputedStyles(source, clone);
+    clone.querySelectorAll('.no-pdf,button,input,select,textarea,canvas,svg').forEach((el) => el.remove());
+    clone.style.setProperty('display', 'block', 'important');
+    clone.style.setProperty('opacity', '1', 'important');
+    clone.style.setProperty('visibility', 'visible', 'important');
+    clone.style.setProperty('transform', 'none', 'important');
+    surface.stage.appendChild(clone);
+    return { surface, target: clone };
+}
+
+async function requireAuth(req, res, next) {
+
+    // PUBLIC ROUTES (no auth required)
+    if (
+        req.path === '/login' ||
+        req.path === '/signup' ||
+        req.path.startsWith('/auth') ||
+        req.path.startsWith('/api/auth')
+    ) {
+        return next();
+    }
+
+    try {
+
+        const account = resolveSessionAccount(req);
+
+        if (!account) {
+            return res.redirect('/login');
+        }
+
+        req.authAccount = account;
+
+        next();
+
+    } catch (err) {
+
+        console.error("Auth error:", err);
+        return res.redirect('/login');
+
+    }
+}
 async function adminFetch(url, options) {
     const requestOptions = Object.assign({ credentials: 'include' }, options || {});
     const response = await fetch(url, requestOptions);
@@ -1402,14 +1558,24 @@ async function exportAdminReportPdf() {
             showAdminToast('Report section not found');
             return;
         }
+        const prepared = buildAdminPdfSurfaceFromElement(target, '794px');
         const filename = `tripset-admin-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+        await waitForAdminPdfCapture(prepared.target);
         await html2pdf().set({
             margin: [8, 8, 8, 8],
             filename,
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                foreignObjectRendering: true,
+                width: prepared.target.scrollWidth,
+                windowWidth: prepared.target.scrollWidth
+            },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        }).from(target).save();
+        }).from(prepared.target).save();
+        prepared.surface.host.remove();
         showAdminToast('PDF exported');
     } catch (err) {
         showAdminToast(err.message || 'Failed to export PDF');
@@ -1527,6 +1693,147 @@ async function restoreAdminBackup() {
         showAdminToast('Backup restored');
     } catch (err) {
         showAdminToast(err.message || 'Failed to restore backup');
+    }
+}
+
+// Invoice Preview Functions
+let currentInvoiceData = null;
+let currentInvoiceMonth = null;
+
+async function openInvoicePreview(month) {
+    const modal = document.getElementById('invoicePreviewModal');
+    const content = document.getElementById('invoicePreviewContent');
+    if (!modal || !content) return;
+    
+    currentInvoiceMonth = month;
+    modal.classList.add('open');
+    content.innerHTML = '<div class="invoice-preview-loading">Loading invoice...</div>';
+    
+    try {
+        const data = await adminFetch(`/api/invoice/${encodeURIComponent(month)}`);
+        currentInvoiceData = data;
+        renderInvoicePreview(data);
+    } catch (err) {
+        content.innerHTML = '<div class="invoice-preview-empty">' + escapeHtml(err.message || 'Failed to load invoice') + '</div>';
+    }
+}
+
+function renderInvoicePreview(data) {
+    const content = document.getElementById('invoicePreviewContent');
+    if (!content || !data) return;
+    
+    const items = Array.isArray(data.items) ? data.items : [];
+    const itemsHtml = items.length ? items.map(function(item) {
+        return '<tr>' +
+            '<td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0;">' + escapeHtml(item.date || '--') + '</td>' +
+            '<td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0;">' + escapeHtml(item.itemName || '--') + '</td>' +
+            '<td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; text-align: right;">' + escapeHtml(formatNumber(item.quantity || 0)) + '</td>' +
+            '<td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; text-align: right;">₹' + escapeHtml(formatNumber(item.price || 0)) + '</td>' +
+            '<td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; text-align: right;">₹' + escapeHtml(formatNumber(item.total || 0)) + '</td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="5" style="padding: 2rem; text-align: center; color: #94a3b8;">No items found for this month.</td></tr>';
+    
+    const html = '<div style="background: white; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">' +
+        '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #f97316;">' +
+            '<div>' +
+                '<div style="font-size: 1.25rem; font-weight: 700; color: #1e293b;">' + escapeHtml(data.companyName || 'Tripset') + '</div>' +
+                '<div style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem;">Invoice #' + escapeHtml(data.invoiceNumber || '') + '</div>' +
+            '</div>' +
+            '<div style="text-align: right;">' +
+                '<div style="color: #64748b; font-size: 0.75rem;">Month</div>' +
+                '<div style="font-weight: 600; color: #1e293b;">' + escapeHtml(data.month || '') + '</div>' +
+            '</div>' +
+        '</div>' +
+        
+        '<div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 0.5rem;">' +
+            '<div style="font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Customer Details</div>' +
+            '<div style="font-weight: 600; color: #1e293b;">' + escapeHtml(data.customer && data.customer.name ? data.customer.name : 'Walk-in Customer') + '</div>' +
+            (data.customer && data.customer.contact ? '<div style="color: #64748b; font-size: 0.875rem;">' + escapeHtml(data.customer.contact) + '</div>' : '') +
+        '</div>' +
+        
+        '<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">' +
+            '<thead>' +
+                '<tr style="background: #f1f5f9;">' +
+                    '<th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600;">Date</th>' +
+                    '<th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600;">Description</th>' +
+                    '<th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600;">KM</th>' +
+                    '<th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600;">Rate</th>' +
+                    '<th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 600;">Amount</th>' +
+                '</tr>' +
+            '</thead>' +
+            '<tbody>' + itemsHtml + '</tbody>' +
+        '</table>' +
+        
+        '<div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #e2e8f0;">' +
+            '<div style="display: flex; justify-content: flex-end;">' +
+                '<div style="width: 200px;">' +
+                    '<div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">' +
+                        '<span style="color: #64748b;">Subtotal:</span>' +
+                        '<span style="font-weight: 600;">₹' + escapeHtml(formatNumber(data.subtotal || 0)) + '</span>' +
+                    '</div>' +
+                    (data.taxPercent > 0 ? '<div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">' +
+                        '<span style="color: #64748b;">Tax (' + escapeHtml(data.taxPercent) + '%):</span>' +
+                        '<span style="font-weight: 600;">₹' + escapeHtml(formatNumber(data.taxAmount || 0)) + '</span>' +
+                    '</div>' : '') +
+                    '<div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-top: 1px solid #e2e8f0; font-weight: 700; font-size: 1.125rem;">' +
+                        '<span>Total:</span>' +
+                        '<span style="color: #f97316;">₹' + escapeHtml(formatNumber(data.grandTotal || 0)) + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+        
+        '<div style="margin-top: 1.5rem; padding: 0.75rem; background: ' + (data.paymentStatus === 'Paid' ? '#dcfce7' : '#fef3c7') + '; border-radius: 0.5rem; text-align: center; font-weight: 600; color: ' + (data.paymentStatus === 'Paid' ? '#166534' : '#92400e') + ';">' +
+            'Payment Status: ' + escapeHtml(data.paymentStatus || 'Pending') +
+        '</div>' +
+    '</div>';
+    
+    content.innerHTML = html;
+}
+
+function closeInvoicePreview() {
+    const modal = document.getElementById('invoicePreviewModal');
+    if (modal) modal.classList.remove('open');
+    currentInvoiceData = null;
+    currentInvoiceMonth = null;
+}
+
+async function downloadInvoiceFromPreview() {
+    try {
+        if (typeof html2pdf === 'undefined') {
+            showAdminToast('PDF export library is not available');
+            return;
+        }
+        if (!currentInvoiceData || !currentInvoiceMonth) {
+            showAdminToast('No invoice data to download');
+            return;
+        }
+        const content = document.getElementById('invoicePreviewContent');
+        if (!content) {
+            showAdminToast('Invoice content not found');
+            return;
+        }
+        const prepared = buildAdminPdfSurfaceFromElement(content, '794px');
+        const filename = 'invoice-' + currentInvoiceMonth + '.pdf';
+        await waitForAdminPdfCapture(prepared.target);
+        await html2pdf().set({
+            margin: [10, 10, 10, 10],
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                foreignObjectRendering: true,
+                width: prepared.target.scrollWidth,
+                windowWidth: prepared.target.scrollWidth
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(prepared.target).save();
+        prepared.surface.host.remove();
+        showAdminToast('Invoice PDF downloaded');
+    } catch (err) {
+        showAdminToast(err.message || 'Failed to download invoice PDF');
     }
 }
 
@@ -1667,7 +1974,10 @@ Object.assign(window, {
     markNotificationRead,
     markAllNotificationsRead,
     downloadAdminBackup,
-    restoreAdminBackup
+    restoreAdminBackup,
+    openInvoicePreview,
+    closeInvoicePreview,
+    downloadInvoiceFromPreview
 });
 
 window.addEventListener('load', () => {

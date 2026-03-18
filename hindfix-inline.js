@@ -1,0 +1,3234 @@
+
+        'use strict';
+        // Enhanced error handler - suppress known browser extension errors
+
+        
+        // Suppress console warnings from Tailwind CDN (development only)
+        var originalWarn = console.warn;
+        console.warn = function() {
+            var args = Array.prototype.slice.call(arguments);
+            var message = String(args.join(' '));
+            if (message.includes('cdn.tailwindcss.com should not be used in production') ||
+                message.includes('tailwindcss.com/docs/installation')) {
+                return; // Suppress Tailwind CDN warning
+            }
+            originalWarn.apply(console, args);
+        };
+        
+        // Also suppress console.log for Tailwind warning (some browsers use log instead)
+        var originalLog = console.log;
+        console.log = function() {
+            var args = Array.prototype.slice.call(arguments);
+            var message = String(args.join(' '));
+            if (message.includes('cdn.tailwindcss.com should not be used in production') ||
+                message.includes('tailwindcss.com/docs/installation')) {
+                return;
+            }
+            originalLog.apply(console, args);
+        };
+        
+        console.log("SCRIPT LOADED ✅ (Invoice Build)");
+
+        var appInitialized = false;
+        window.authProfile = {
+            user: 'pratham',
+            dbFolder: 'pratham',
+            displayName: 'Pratham',
+            isDynamicUser: false,
+            canDeleteAccount: false
+        };
+        window.currentUserDisplayName = 'Pratham';
+
+        function refreshDeleteAccountUI() {
+            var deleteBtn = document.getElementById('deleteAccountBtn');
+            var deleteHint = document.getElementById('deleteAccountHint');
+            var allowed = !!(window.authProfile && window.authProfile.canDeleteAccount);
+            if (deleteBtn) {
+                deleteBtn.disabled = !allowed;
+                if (allowed) {
+                    deleteBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                } else {
+                    deleteBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                }
+            }
+            if (deleteHint) {
+                deleteHint.style.display = allowed ? 'none' : 'block';
+            }
+        }
+
+        function setAuthenticatedIdentity(status) {
+            var displayName = String((status && status.displayName) || window.currentUserDisplayName || 'Pratham').trim() || 'Pratham';
+            window.currentUserDisplayName = displayName;
+            window.authProfile = {
+                user: String((status && status.user) || ''),
+                dbFolder: String((status && status.dbFolder) || ''),
+                displayName: displayName,
+                isDynamicUser: !!(status && status.isDynamicUser),
+                canDeleteAccount: !!(status && status.canDeleteAccount)
+            };
+            if (i18nResources && i18nResources.en && i18nResources.en.translation && i18nResources.en.translation.home) {
+                i18nResources.en.translation.home.welcome = 'Welcome ' + displayName;
+            }
+            if (i18nResources && i18nResources.gu && i18nResources.gu.translation && i18nResources.gu.translation.home) {
+                i18nResources.gu.translation.home.welcome = 'સ્વાગત છે ' + displayName;
+            }
+            if (i18nResources && i18nResources.hi && i18nResources.hi.translation && i18nResources.hi.translation.home) {
+                i18nResources.hi.translation.home.welcome = 'स्वागत है ' + displayName;
+            }
+            document.querySelectorAll('[data-user-display-name]').forEach(function(el) {
+                el.textContent = displayName;
+            });
+            refreshDeleteAccountUI();
+        }
+
+        function setDisplayImportant(el, value) {
+            if (!el) return;
+            el.style.setProperty('display', value, 'important');
+            if (String(value).toLowerCase() === 'none') {
+                el.style.setProperty('pointer-events', 'none', 'important');
+            } else {
+                el.style.setProperty('pointer-events', 'auto', 'important');
+            }
+        }
+
+        function setVisibilityImportant(el, value) {
+            if (!el) return;
+            el.style.setProperty('visibility', value, 'important');
+            if (String(value).toLowerCase() === 'hidden') {
+                el.style.setProperty('pointer-events', 'none', 'important');
+            } else {
+                el.style.setProperty('pointer-events', 'auto', 'important');
+            }
+        }
+
+        function setBodyScrollLocked(locked) {
+            if (!document.body) return;
+            if (locked) {
+                document.body.style.setProperty('overflow', 'hidden', 'important');
+                document.body.style.setProperty('height', '100vh', 'important');
+            } else {
+                document.body.style.setProperty('overflow', 'auto', 'important');
+                document.body.style.setProperty('overflow-x', 'hidden', 'important');
+                document.body.style.setProperty('overflow-y', 'auto', 'important');
+                document.body.style.removeProperty('height');
+            }
+        }
+
+        window.toggleMobileNav = function(forceOpen) {
+            var menu = document.getElementById('mobileNavMenu');
+            var backdrop = document.getElementById('mobileNavBackdrop');
+            var btn = document.getElementById('mobileMenuBtn');
+            if (!menu || !backdrop) return;
+
+            if (window.innerWidth >= 768) {
+                menu.classList.remove('open');
+                backdrop.style.display = 'none';
+                document.body.classList.remove('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+                return;
+            }
+
+            var open = menu.classList.contains('open');
+            var shouldOpen = (typeof forceOpen === 'boolean') ? forceOpen : !open;
+
+            if (shouldOpen) {
+                menu.classList.add('open');
+                backdrop.style.display = 'block';
+                document.body.classList.add('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'true');
+            } else {
+                menu.classList.remove('open');
+                backdrop.style.display = 'none';
+                document.body.classList.remove('mobile-nav-open');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        };
+
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 768) window.toggleMobileNav(false);
+        });
+
+        var LANGUAGE_STORAGE_KEY = 'tripset_language';
+        var SUPPORTED_LANGUAGES = ['en', 'gu', 'hi'];
+
+        var i18nResources = {
+            en: {
+                translation: {
+                    nav: { home: "Home", dashboard: "Dashboard", entryForm: "Details", entries: "Entries", company: "Company", notices: "Notices", settings: "Settings" },
+                    login: { required: "Login required", username: "Mobile number", password: "Password", button: "Login", authorized: "Authorized user only" },
+                    install: { title: "Install Tripset", subtitle: "Install app for better experience", install: "Install", later: "Later" },
+                    settings: {
+                        title: "Settings", companyName: "Company Name", rate: "Rate (₹ per KM)", language: "Language",
+                        save: "Save Settings 💾", backupTitle: "Backup & Restore", downloadBackup: "📥 Download Backup",
+                        restoreLabel: "Restore Backup (JSON File)", restoreBackup: "📤 Restore Backup",
+                        invoiceTitle: "Invoice", invoiceGenerator: "🧾 Invoice Generator", invoiceHelp: "Select month and download invoice PDF.",
+                        deleteAccountTitle: "Delete Account", deleteAccountHint: "Default login accounts cannot be deleted.",
+                        deleteAccountWarning: "This action is permanent. All your data will be deleted from the database.",
+                        deleteStep1: "I accept Terms & Conditions and want to continue.",
+                        deleteAccount: "🗑 Delete Account",
+                        logout: "🚪 Logout"
+                    },
+                    dashboard: {
+                        invoiceDescription: "Generate monthly invoice directly from MongoDB trips.",
+                        generateInvoicePdf: "Generate Invoice PDF", selectMonth: "Select Month",
+                        totalTrips: "Total Trips", totalKm: "Total KM", entryTotal: "Entry Total", companyTotal: "Company Total",
+                        todayKm: "Today KM", todayAmount: "Today Amount", netProfit: "Net Profit",
+                        monthlyAnalytics: "📈 Monthly Analytics", toggleChart: "Toggle Chart 📊",
+                        dailyTrend: "📅 Daily Trend", profitAnalysis: "💸 Profit Analysis", weeklyReport: "📆 Weekly Report",
+                        monthlySummary: "Monthly Summary", month: "Month", trips: "Trips", km: "KM"
+                    },
+                    home: { subtitle: "Best Trip Management System", startEntry: "Start New Entry ➔", welcome: "Welcome Pratham" },
+                    notices: {
+                        kicker: "Notice Center",
+                        title: "Announcements & Notices",
+                        subtitle: "View active updates from the admin in your selected language.",
+                        refresh: "Refresh Notices",
+                        popup: "Open Popup",
+                        empty: "No active announcements right now.",
+                        count_one: "{{count}} active notice",
+                        count_other: "{{count}} active notices"
+                    },
+                    entry: {
+                        title: "Trip Details Form", date: "Date", pickupTime: "Pickup Time", dropTime: "Drop Time",
+                        tripId: "Trip ID", tripIdPlaceholder: "Manual ID", pickup: "Pickup", pickupPlaceholder: "Pickup point",
+                        drop: "Drop", dropPlaceholder: "Drop point", person: "Persons", rate: "Rate",
+                        otherPlus: "Other (+)", otherExpense: "Other Expense (-)", totalAmount: "TOTAL AMOUNT:",
+                        save: "Save to MongoDB 💾"
+                    },
+                    entries: { title: "Entries List (Old to New)", route: "Route", time: "Time", otherDetails: "Other Details", total: "Total", action: "Action" },
+                    company: { title: "Company Entry Report", totalRate: "Total (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 Invoice Generator", modalHelp: "Select month and generate invoice PDF.", selectMonth: "Select Month",
+                        monthlyTripInvoice: "Monthly Trip Invoice", invoiceMonthLabel: "Invoice Month:", generatedLabel: "Generated:",
+                        totals: "Totals", expenseBreakdown: "Expense Breakdown", authorizedSignatory: "Authorised Signatory", thankYou: "Thank you."
+                    },
+                    edit: { title: "Edit Trip", update: "Update Trip 🔄" },
+                    common: { cancel: "Cancel", downloadPdf: "Download PDF", pdf: "PDF", excel: "Excel", apply: "Apply" },
+                    chart: { totalKm: "Total KM", revenue: "Revenue ₹", trips: "Trips", profit: "Profit ₹" },
+                    table: { otherPlus: "Other:+₹", cngMinus: "CNG:-₹", expMinus: "Exp:-₹", editTitle: "Edit", deleteTitle: "Delete", tripsPrefix: "Trips: ", grandTotal: "Grand Total" },
+                    status: { online: "✅ Back online!", offline: "📡 You're offline. Some features may be limited." },
+                    toast: {
+                        appInstalled: "App installed successfully! 🎉", installNotAvailable: "Installation not available", installingApp: "Installing app...",
+                        newVersion: "New version available! Refresh to update.", noChartData: "No data for chart ❌",
+                        settingsSaved: "Settings Saved ✅", settingsFailed: "Failed to save settings ❌",
+                        preparingExcel: "Preparing Company Excel... ⏳", noData: "No data found ❌", excelDownloaded: "Company Excel Downloaded ✅",
+                        preparingBackup: "Preparing backup... ⏳", noTripsBackup: "No trips to backup ❌", backupDownloaded: "Backup downloaded: {{count}} trips ✅",
+                        backupDownloadFailed: "Failed to download backup ❌", invalidFileType: "Invalid file type. Please select a JSON file ❌",
+                        readingBackup: "Reading backup file... ⏳", invalidJson: "Invalid JSON format ❌",
+                        invalidBackupFormat: "Invalid backup format. Expected array of trips ❌", backupEmpty: "Backup file is empty ❌",
+                        invalidTripData: "Invalid trip data: {{detail}} ❌", restoreConfirm: "Restore {{count}} trips? This will add them to your database.",
+                        restoringTrips: "Restoring {{count}} trips... ⏳",
+                        restoredTrips: "Successfully restored {{count}} trips ✅", restoreFailed: "Restore failed: {{error}} ❌",
+                        restorePartial: "Note: {{count}} trips were inserted before error.", restoreFailedGeneric: "Failed to restore backup ❌",
+                        darkModeOn: "Dark Mode ON 🌙", lightModeOn: "Light Mode ☀️",
+                        errorNoTripId: "Error: No trip ID provided ❌", tripsNotLoaded: "Trips not loaded yet. Please wait... ❌",
+                        tripNotFound: "Trip not found ❌", tripUpdated: "Trip Updated ✅", dataSaved: "Data Saved! ✅",
+                        tripDeleted: "Trip deleted successfully ✅", deleteConfirm: "Are you sure you want to delete this trip?",
+                        deleteFailed: "Delete failed: {{error}} ❌", deleteError: "Error deleting trip ❌",
+                        iosInstallGuide: "On iPhone: tap Share, then Add to Home Screen.",
+                        pdfGenerating: "PDF Generating... ⏳", downloadComplete: "Download Complete! 📄",
+                        selectInvoiceMonth: "Please select invoice month", generatingInvoice: "Generating invoice...",
+                        invoiceFailed: "Failed to generate invoice", invoiceTemplateMissing: "Invoice template missing",
+                        invoiceDownloaded: "Invoice downloaded ✅", invoiceGenerationFailed: "Invoice generation failed",
+                        deleteAccountNotAllowed: "Default login accounts cannot be deleted",
+                        deleteAccountStep1: "Please accept Terms & Conditions first",
+                        deleteAccountStep2: "Please confirm: Yes, I want to delete my account",
+                        deleteAccountSuccess: "Account deleted permanently",
+                        deleteAccountFailed: "Failed to delete account"
+                    }
+                }
+            },
+            gu: {
+                translation: {
+                    nav: { home: "હોમ", dashboard: "ડેશબોર્ડ", entryForm: "વિગત", entries: "એન્ટ્રી", company: "કંપની", notices: "નોટિસ", settings: "સેટિંગ્સ" },
+                    login: { required: "લૉગિન જરૂરી છે", username: "મોબાઇલ નંબર", password: "પાસવર્ડ", button: "લૉગિન", authorized: "માત્ર અધિકૃત યુઝર" },
+                    install: { title: "Tripset ઇન્સ્ટોલ કરો", subtitle: "સારો અનુભવ માટે એપ ઇન્સ્ટોલ કરો", install: "ઇન્સ્ટોલ", later: "પછી" },
+                    settings: {
+                        title: "સેટિંગ્સ", companyName: "કંપની નામ", rate: "રેટ (₹ પ્રતિ KM)", language: "ભાષા",
+                        save: "સેટિંગ્સ સેવ કરો 💾", backupTitle: "બેકઅપ અને રિસ્ટોર", downloadBackup: "📥 બેકઅપ ડાઉનલોડ",
+                        restoreLabel: "બેકઅપ રિસ્ટોર કરો (JSON ફાઇલ)", restoreBackup: "📤 બેકઅપ રિસ્ટોર",
+                        invoiceTitle: "ઇન્વૉઇસ", invoiceGenerator: "🧾 ઇન્વૉઇસ જનરેટર", invoiceHelp: "મહિનો પસંદ કરો અને PDF ડાઉનલોડ કરો.",
+                        deleteAccountTitle: "એકાઉન્ટ ડિલીટ", deleteAccountHint: "ડિફોલ્ટ લૉગિન એકાઉન્ટ ડિલીટ કરી શકાતા નથી.",
+                        deleteAccountWarning: "આ ક્રિયા કાયમી છે. તમારું બધું ડેટા ડેટાબેઝમાંથી ડિલીટ થઈ જશે.",
+                        deleteStep1: "હું Terms & Conditions સ્વીકારું છું અને આગળ વધવા માંગું છું.",
+                        deleteAccount: "🗑 એકાઉન્ટ ડિલીટ",
+                        logout: "🚪 લૉગઆઉટ"
+                    },
+                    dashboard: {
+                        invoiceDescription: "MongoDB ટ્રિપ પરથી માસિક ઇન્વૉઇસ બનાવો.",
+                        generateInvoicePdf: "ઇન્વૉઇસ PDF બનાવો", selectMonth: "મહિનો પસંદ કરો",
+                        totalTrips: "કુલ ટ્રિપ", totalKm: "કુલ KM", entryTotal: "એન્ટ્રી ટોટલ", companyTotal: "કંપની ટોટલ",
+                        todayKm: "આજનું KM", todayAmount: "આજની રકમ", netProfit: "શુદ્ધ નફો",
+                        monthlyAnalytics: "📈 માસિક એનાલિટિક્સ", toggleChart: "ચાર્ટ બદલો 📊",
+                        dailyTrend: "📅 દૈનિક ટ્રેન્ડ", profitAnalysis: "💸 નફા વિશ્લેષણ", weeklyReport: "📆 સાપ્તાહિક રિપોર્ટ",
+                        monthlySummary: "માસિક સારાંશ", month: "મહિનો", trips: "ટ્રિપ", km: "KM"
+                    },
+                    home: { subtitle: "સર્વશ્રેષ્ઠ ટ્રિપ મેનેજમેન્ટ સિસ્ટમ", startEntry: "નવી એન્ટ્રી શરૂ કરો ➔", welcome: "સ્વાગત છે Pratham" },
+                    notices: {
+                        kicker: "નોટિસ સેન્ટર",
+                        title: "જાહેરાતો અને નોટિસ",
+                        subtitle: "તમારી પસંદ કરેલી ભાષામાં એડમિન અપડેટ જુઓ.",
+                        refresh: "નોટિસ રિફ્રેશ કરો",
+                        popup: "પોપઅપ ખોલો",
+                        empty: "હાલ કોઈ સક્રિય જાહેરાત નથી.",
+                        count_one: "{{count}} સક્રિય નોટિસ",
+                        count_other: "{{count}} સક્રિય નોટિસ"
+                    },
+                    entry: {
+                        title: "ટ્રિપની વિગત ભરો", date: "તારીખ", pickupTime: "પિકઅપ સમય", dropTime: "ડ્રોપ સમય",
+                        tripId: "ટ્રિપ ID", tripIdPlaceholder: "મેન્યુઅલ ID", pickup: "પિકઅપ", pickupPlaceholder: "પિકઅપ પોઈન્ટ",
+                        drop: "ડ્રોપ", dropPlaceholder: "ડ્રોપ પોઈન્ટ", person: "માણસો", rate: "રેટ",
+                        otherPlus: "અન્ય (+)", otherExpense: "અન્ય ખર્ચ (-)", totalAmount: "કુલ રકમ:", save: "MongoDB માં સેવ કરો 💾"
+                    },
+                    entries: { title: "એન્ટ્રી લિસ્ટ (જૂની થી નવી)", route: "રૂટ", time: "સમય", otherDetails: "અન્ય વિગતો", total: "ટોટલ", action: "ક્રિયા" },
+                    company: { title: "કંપની એન્ટ્રી રિપોર્ટ", totalRate: "ટોટલ (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 ઇન્વૉઇસ જનરેટર", modalHelp: "મહિનો પસંદ કરો અને ઇન્વૉઇસ PDF બનાવો.", selectMonth: "મહિનો પસંદ કરો",
+                        monthlyTripInvoice: "માસિક ટ્રિપ ઇન્વૉઇસ", invoiceMonthLabel: "ઇન્વૉઇસ મહિનો:", generatedLabel: "બનાવેલ:",
+                        totals: "કુલ", expenseBreakdown: "ખર્ચ વિગત", authorizedSignatory: "અધિકૃત સહી", thankYou: "આભાર."
+                    },
+                    edit: { title: "ટ્રિપ એડિટ કરો", update: "ટ્રિપ અપડેટ કરો 🔄" },
+                    common: { cancel: "રદ્દ કરો", downloadPdf: "PDF ડાઉનલોડ", pdf: "PDF", excel: "Excel", apply: "લાગુ કરો" },
+                    chart: { totalKm: "કુલ KM", revenue: "આવક ₹", trips: "ટ્રિપ", profit: "નફો ₹" },
+                    table: { otherPlus: "અન્ય:+₹", cngMinus: "CNG:-₹", expMinus: "ખર્ચ:-₹", editTitle: "એડિટ", deleteTitle: "ડિલીટ", tripsPrefix: "ટ્રિપ: ", grandTotal: "ગ્રાન્ડ ટોટલ" },
+                    status: { online: "✅ ફરી ઑનલાઇન", offline: "📡 તમે ઑફલાઇન છો. કેટલાક ફીચર્સ મર્યાદિત હોઈ શકે." },
+                    toast: {
+                        appInstalled: "એપ સફળતાપૂર્વક ઇન્સ્ટોલ થઈ! 🎉", installNotAvailable: "ઇન્સ્ટોલેશન ઉપલબ્ધ નથી", installingApp: "એપ ઇન્સ્ટોલ થઈ રહી છે...",
+                        newVersion: "નવી આવૃત્તિ ઉપલબ્ધ છે! અપડેટ માટે રિફ્રેશ કરો.", noChartData: "ચાર્ટ માટે ડેટા નથી ❌",
+                        settingsSaved: "સેટિંગ્સ સેવ થઈ ✅", settingsFailed: "સેટિંગ્સ સેવ નિષ્ફળ ❌",
+                        preparingExcel: "કંપની Excel તૈયાર થાય છે... ⏳", noData: "ડેટા મળ્યો નથી ❌", excelDownloaded: "કંપની Excel ડાઉનલોડ થયું ✅",
+                        preparingBackup: "બેકઅપ તૈયાર થાય છે... ⏳", noTripsBackup: "બેકઅપ માટે ટ્રિપ નથી ❌", backupDownloaded: "બેકઅપ ડાઉનલોડ: {{count}} ટ્રિપ ✅",
+                        backupDownloadFailed: "બેકઅપ ડાઉનલોડ નિષ્ફળ ❌", invalidFileType: "અયોગ્ય ફાઇલ પ્રકાર. JSON ફાઇલ પસંદ કરો ❌",
+                        readingBackup: "બેકઅપ ફાઇલ વાંચી રહ્યા છીએ... ⏳", invalidJson: "અયોગ્ય JSON ફોર્મેટ ❌",
+                        invalidBackupFormat: "અયોગ્ય બેકઅપ ફોર્મેટ. ટ્રિપ એરે જરૂરી છે ❌", backupEmpty: "બેકઅપ ફાઇલ ખાલી છે ❌",
+                        invalidTripData: "અયોગ્ય ટ્રિપ ડેટા: {{detail}} ❌", restoreConfirm: "{{count}} ટ્રિપ રિસ્ટોર કરશો? આ તમારા ડેટાબેઝમાં ઉમેરાશે.",
+                        restoringTrips: "{{count}} ટ્રિપ રિસ્ટોર થાય છે... ⏳",
+                        restoredTrips: "{{count}} ટ્રિપ સફળતાપૂર્વક રિસ્ટોર ✅", restoreFailed: "રિસ્ટોર નિષ્ફળ: {{error}} ❌",
+                        restorePartial: "નોંધ: ભૂલ પહેલાં {{count}} ટ્રિપ ઇન્સર્ટ થઈ.", restoreFailedGeneric: "બેકઅપ રિસ્ટોર નિષ્ફળ ❌",
+                        darkModeOn: "ડાર્ક મોડ ON 🌙", lightModeOn: "લાઇટ મોડ ☀️",
+                        errorNoTripId: "ભૂલ: ટ્રિપ ID આપવામાં નથી ❌", tripsNotLoaded: "ટ્રિપ હજુ લોડ નથી. રાહ જુઓ... ❌",
+                        tripNotFound: "ટ્રિપ મળી નથી ❌", tripUpdated: "ટ્રિપ અપડેટ થઈ ✅", dataSaved: "ડેટા સેવ થયું! ✅",
+                        tripDeleted: "ટ્રિપ સફળતાપૂર્વક ડિલીટ ✅", deleteConfirm: "શું તમે આ ટ્રિપ ડિલીટ કરવા માંગો છો?",
+                        deleteFailed: "ડિલીટ નિષ્ફળ: {{error}} ❌", deleteError: "ટ્રિપ ડિલીટ ભૂલ ❌",
+                        iosInstallGuide: "iPhone પર: Share દબાવો, પછી Add to Home Screen પસંદ કરો.",
+                        pdfGenerating: "PDF બને છે... ⏳", downloadComplete: "ડાઉનલોડ પૂર્ણ! 📄",
+                        selectInvoiceMonth: "કૃપા કરીને ઇન્વૉઇસ મહિનો પસંદ કરો", generatingInvoice: "ઇન્વૉઇસ બને છે...",
+                        invoiceFailed: "ઇન્વૉઇસ જનરેટ નિષ્ફળ", invoiceTemplateMissing: "ઇન્વૉઇસ ટેમ્પલેટ મળ્યો નથી",
+                        invoiceDownloaded: "ઇન્વૉઇસ ડાઉનલોડ થયું ✅", invoiceGenerationFailed: "ઇન્વૉઇસ જનરેશન નિષ્ફળ",
+                        deleteAccountNotAllowed: "ડિફોલ્ટ લૉગિન એકાઉન્ટ ડિલીટ કરી શકાતા નથી",
+                        deleteAccountStep1: "સૌ પ્રથમ Terms & Conditions સ્વીકારો",
+                        deleteAccountStep2: "કૃપા કરીને કન્ફર્મ કરો: Yes, I want to delete my account",
+                        deleteAccountSuccess: "એકાઉન્ટ કાયમી રીતે ડિલીટ થયું",
+                        deleteAccountFailed: "એકાઉન્ટ ડિલીટ કરવામાં નિષ્ફળ"
+                    }
+                }
+            },
+            hi: {
+                translation: {
+                    nav: { home: "होम", dashboard: "डैशबोर्ड", entryForm: "विवरण", entries: "एंट्री", company: "कंपनी", notices: "नोटिस", settings: "सेटिंग्स" },
+                    login: { required: "लॉगिन आवश्यक है", username: "मोबाइल नंबर", password: "पासवर्ड", button: "लॉगिन", authorized: "केवल अधिकृत उपयोगकर्ता" },
+                    install: { title: "Tripset इंस्टॉल करें", subtitle: "बेहतर अनुभव के लिए ऐप इंस्टॉल करें", install: "इंस्टॉल", later: "बाद में" },
+                    settings: {
+                        title: "सेटिंग्स", companyName: "कंपनी नाम", rate: "रेट (₹ प्रति KM)", language: "भाषा",
+                        save: "सेटिंग्स सेव करें 💾", backupTitle: "बैकअप और रिस्टोर", downloadBackup: "📥 बैकअप डाउनलोड",
+                        restoreLabel: "बैकअप रिस्टोर करें (JSON फ़ाइल)", restoreBackup: "📤 बैकअप रिस्टोर",
+                        invoiceTitle: "इनवॉइस", invoiceGenerator: "🧾 इनवॉइस जनरेटर", invoiceHelp: "महीना चुनें और PDF डाउनलोड करें।",
+                        deleteAccountTitle: "अकाउंट डिलीट", deleteAccountHint: "डिफ़ॉल्ट लॉगिन अकाउंट डिलीट नहीं किए जा सकते।",
+                        deleteAccountWarning: "यह कार्रवाई स्थायी है। आपका पूरा डेटा डेटाबेस से हट जाएगा।",
+                        deleteStep1: "मैं Terms & Conditions स्वीकार करता/करती हूं और आगे बढ़ना चाहता/चाहती हूं।",
+                        deleteAccount: "🗑 अकाउंट डिलीट",
+                        logout: "🚪 लॉगआउट"
+                    },
+                    dashboard: {
+                        invoiceDescription: "MongoDB ट्रिप से मासिक इनवॉइस बनाएं।",
+                        generateInvoicePdf: "इनवॉइस PDF बनाएं", selectMonth: "महीना चुनें",
+                        totalTrips: "कुल ट्रिप", totalKm: "कुल KM", entryTotal: "एंट्री टोटल", companyTotal: "कंपनी टोटल",
+                        todayKm: "आज का KM", todayAmount: "आज की राशि", netProfit: "शुद्ध लाभ",
+                        monthlyAnalytics: "📈 मासिक एनालिटिक्स", toggleChart: "चार्ट बदलें 📊",
+                        dailyTrend: "📅 दैनिक ट्रेंड", profitAnalysis: "💸 लाभ विश्लेषण", weeklyReport: "📆 साप्ताहिक रिपोर्ट",
+                        monthlySummary: "मासिक सारांश", month: "महीना", trips: "ट्रिप", km: "KM"
+                    },
+                    home: { subtitle: "सर्वश्रेष्ठ ट्रिप मैनेजमेंट सिस्टम", startEntry: "नई एंट्री शुरू करें ➔", welcome: "स्वागत है Pratham" },
+                    notices: {
+                        kicker: "नोटिस सेंटर",
+                        title: "घोषणाएं और नोटिस",
+                        subtitle: "अपनी चुनी हुई भाषा में एडमिन अपडेट देखें।",
+                        refresh: "नोटिस रिफ्रेश करें",
+                        popup: "पॉपअप खोलें",
+                        empty: "अभी कोई सक्रिय घोषणा नहीं है।",
+                        count_one: "{{count}} सक्रिय नोटिस",
+                        count_other: "{{count}} सक्रिय नोटिस"
+                    },
+                    entry: {
+                        title: "ट्रिप विवरण भरें", date: "तारीख", pickupTime: "पिकअप समय", dropTime: "ड्रॉप समय",
+                        tripId: "ट्रिप ID", tripIdPlaceholder: "मैनुअल ID", pickup: "पिकअप", pickupPlaceholder: "पिकअप पॉइंट",
+                        drop: "ड्रॉप", dropPlaceholder: "ड्रॉप पॉइंट", person: "व्यक्ति", rate: "रेट",
+                        otherPlus: "अन्य (+)", otherExpense: "अन्य खर्च (-)", totalAmount: "कुल राशि:", save: "MongoDB में सेव करें 💾"
+                    },
+                    entries: { title: "एंट्री सूची (पुरानी से नई)", route: "रूट", time: "समय", otherDetails: "अन्य विवरण", total: "कुल", action: "एक्शन" },
+                    company: { title: "कंपनी एंट्री रिपोर्ट", totalRate: "कुल (KM × Rate)" },
+                    invoice: {
+                        modalTitle: "🧾 इनवॉइस जनरेटर", modalHelp: "महीना चुनें और इनवॉइस PDF बनाएं।", selectMonth: "महीना चुनें",
+                        monthlyTripInvoice: "मासिक ट्रिप इनवॉइस", invoiceMonthLabel: "इनवॉइस महीना:", generatedLabel: "जनरेटेड:",
+                        totals: "कुल", expenseBreakdown: "खर्च विवरण", authorizedSignatory: "अधिकृत हस्ताक्षर", thankYou: "धन्यवाद।"
+                    },
+                    edit: { title: "ट्रिप एडिट करें", update: "ट्रिप अपडेट करें 🔄" },
+                    common: { cancel: "रद्द करें", downloadPdf: "PDF डाउनलोड", pdf: "PDF", excel: "Excel", apply: "लागू करें" },
+                    chart: { totalKm: "कुल KM", revenue: "राजस्व ₹", trips: "ट्रिप", profit: "लाभ ₹" },
+                    table: { otherPlus: "अन्य:+₹", cngMinus: "CNG:-₹", expMinus: "खर्च:-₹", editTitle: "एडिट", deleteTitle: "डिलीट", tripsPrefix: "ट्रिप: ", grandTotal: "ग्रैंड टोटल" },
+                    status: { online: "✅ फिर से ऑनलाइन", offline: "📡 आप ऑफलाइन हैं। कुछ फीचर्स सीमित हो सकते हैं।" },
+                    toast: {
+                        appInstalled: "ऐप सफलतापूर्वक इंस्टॉल हुआ! 🎉", installNotAvailable: "इंस्टॉलेशन उपलब्ध नहीं", installingApp: "ऐप इंस्टॉल हो रहा है...",
+                        newVersion: "नया संस्करण उपलब्ध है! अपडेट के लिए रिफ्रेश करें।", noChartData: "चार्ट के लिए डेटा नहीं ❌",
+                        settingsSaved: "सेटिंग्स सेव हो गई ✅", settingsFailed: "सेटिंग्स सेव विफल ❌",
+                        preparingExcel: "कंपनी Excel तैयार हो रही है... ⏳", noData: "डेटा नहीं मिला ❌", excelDownloaded: "कंपनी Excel डाउनलोड हो गई ✅",
+                        preparingBackup: "बैकअप तैयार हो रहा है... ⏳", noTripsBackup: "बैकअप के लिए ट्रिप नहीं ❌", backupDownloaded: "बैकअप डाउनलोड: {{count}} ट्रिप ✅",
+                        backupDownloadFailed: "बैकअप डाउनलोड विफल ❌", invalidFileType: "अमान्य फाइल प्रकार। कृपया JSON फाइल चुनें ❌",
+                        readingBackup: "बैकअप फाइल पढ़ी जा रही है... ⏳", invalidJson: "अमान्य JSON फॉर्मेट ❌",
+                        invalidBackupFormat: "अमान्य बैकअप फॉर्मेट। ट्रिप एरे अपेक्षित ❌", backupEmpty: "बैकअप फाइल खाली है ❌",
+                        invalidTripData: "अमान्य ट्रिप डेटा: {{detail}} ❌", restoreConfirm: "{{count}} ट्रिप रिस्टोर करें? यह आपके डेटाबेस में जुड़ेंगी।",
+                        restoringTrips: "{{count}} ट्रिप रिस्टोर हो रही हैं... ⏳",
+                        restoredTrips: "{{count}} ट्रिप सफलतापूर्वक रिस्टोर ✅", restoreFailed: "रिस्टोर विफल: {{error}} ❌",
+                        restorePartial: "नोट: त्रुटि से पहले {{count}} ट्रिप इन्सर्ट हुईं।", restoreFailedGeneric: "बैकअप रिस्टोर विफल ❌",
+                        darkModeOn: "डार्क मोड ON 🌙", lightModeOn: "लाइट मोड ☀️",
+                        errorNoTripId: "त्रुटि: ट्रिप ID नहीं दी गई ❌", tripsNotLoaded: "ट्रिप अभी लोड नहीं हुई। कृपया प्रतीक्षा करें... ❌",
+                        tripNotFound: "ट्रिप नहीं मिली ❌", tripUpdated: "ट्रिप अपडेट हो गई ✅", dataSaved: "डेटा सेव हो गया! ✅",
+                        tripDeleted: "ट्रिप सफलतापूर्वक डिलीट ✅", deleteConfirm: "क्या आप सच में इस ट्रिप को डिलीट करना चाहते हैं?",
+                        deleteFailed: "डिलीट विफल: {{error}} ❌", deleteError: "ट्रिप डिलीट त्रुटि ❌",
+                        iosInstallGuide: "iPhone पर: Share दबाएं, फिर Add to Home Screen चुनें।",
+                        pdfGenerating: "PDF बन रही है... ⏳", downloadComplete: "डाउनलोड पूरा! 📄",
+                        selectInvoiceMonth: "कृपया इनवॉइस महीना चुनें", generatingInvoice: "इनवॉइस बन रही है...",
+                        invoiceFailed: "इनवॉइस जनरेट विफल", invoiceTemplateMissing: "इनवॉइस टेम्पलेट नहीं मिला",
+                        invoiceDownloaded: "इनवॉइस डाउनलोड हो गई ✅", invoiceGenerationFailed: "इनवॉइस जनरेशन विफल",
+                        deleteAccountNotAllowed: "डिफ़ॉल्ट लॉगिन अकाउंट डिलीट नहीं किए जा सकते",
+                        deleteAccountStep1: "कृपया पहले Terms & Conditions स्वीकार करें",
+                        deleteAccountStep2: "कृपया पुष्टि करें: Yes, I want to delete my account",
+                        deleteAccountSuccess: "अकाउंट स्थायी रूप से डिलीट हो गया",
+                        deleteAccountFailed: "अकाउंट डिलीट करने में विफल"
+                    }
+                }
+            }
+        };
+
+        function t(key, options) {
+            if (!window.i18next || typeof window.i18next.t !== 'function') return key;
+            return window.i18next.t(key, options);
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(function(el) {
+                var key = el.getAttribute('data-i18n');
+                if (!key) return;
+                el.textContent = t(key);
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+                var key = el.getAttribute('data-i18n-placeholder');
+                if (!key) return;
+                el.setAttribute('placeholder', t(key));
+            });
+
+            var lang = (window.i18next && window.i18next.language) ? window.i18next.language : 'en';
+            document.documentElement.lang = lang;
+            var languageSelect = document.getElementById('languageSelect');
+            if (languageSelect && languageSelect.value !== lang) languageSelect.value = lang;
+        }
+
+        function getSavedLanguage() {
+            try {
+                var saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+                if (saved && SUPPORTED_LANGUAGES.indexOf(saved) !== -1) return saved;
+            } catch (e) {}
+            return 'en';
+        }
+
+        function saveLanguage(lang) {
+            try {
+                localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+            } catch (e) {}
+        }
+
+        function initI18n() {
+            if (!window.i18next) return Promise.resolve();
+            var initialLang = getSavedLanguage();
+
+            return window.i18next.init({
+                lng: initialLang,
+                fallbackLng: 'en',
+                resources: i18nResources,
+                interpolation: { escapeValue: false }
+            }).then(function() {
+                applyTranslations();
+                var languageSelect = document.getElementById('languageSelect');
+                if (languageSelect) {
+                    languageSelect.value = window.i18next.language;
+                    languageSelect.addEventListener('change', function(e) {
+                        window.changeLanguage(e.target.value);
+                    });
+                }
+            }).catch(function(err) {
+                console.error('i18n init failed:', err);
+            });
+        }
+
+        window.changeLanguage = function(lang) {
+            if (!window.i18next || SUPPORTED_LANGUAGES.indexOf(lang) === -1) return;
+            window.i18next.changeLanguage(lang).then(function() {
+                saveLanguage(lang);
+                window.appSettings = window.appSettings || {};
+                window.appSettings.language = lang;
+                var languageSelect = document.getElementById('languageSelect');
+                if (languageSelect && languageSelect.value !== lang) languageSelect.value = lang;
+                applyTranslations();
+                window.startTypingEffect();
+                if (window.currentTrips) renderTables(window.currentTrips);
+                window.loadAppConfig(lang).catch(function() {});
+                fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ language: lang })
+                }).catch(function() {});
+            }).catch(function(err) {
+                console.error('changeLanguage failed:', err);
+            });
+        };
+
+        function hideSplashNow() {
+            var splash = document.getElementById('splashScreen');
+            if (!splash) return;
+            splash.classList.add('hidden');
+            setTimeout(function() {
+                splash.style.display = 'none';
+            }, 250);
+        }
+
+        function showLoginScreen() {
+            console.log('🔐 showLoginScreen: Showing login screen');
+            var login = document.getElementById('loginScreen');
+            var appContent = document.getElementById('appContent');
+            if (!login) {
+                console.error('🔐 showLoginScreen: loginScreen element not found!');
+                return;
+            }
+            if (appContent) {
+                setDisplayImportant(appContent, 'none');
+                setVisibilityImportant(appContent, 'hidden');
+            }
+            setBodyScrollLocked(true);
+            // Force show login screen
+            login.classList.add('show');
+            setDisplayImportant(login, 'flex');
+            setVisibilityImportant(login, 'visible');
+            hideSplashNow();
+            setTimeout(function() {
+                var u = document.getElementById('loginUsername');
+                if (u) u.focus();
+            }, 80);
+        }
+
+        function getPreferredTabAfterUnlock() {
+            var fromHash = String((window.location && window.location.hash) || '').replace(/^#/, '').trim();
+            if (fromHash && document.getElementById(fromHash)) return fromHash;
+
+            var pending = String(window.pendingTabAfterUnlock || '').trim();
+            if (pending && document.getElementById(pending)) return pending;
+
+            var saved = '';
+            try {
+                saved = String(localStorage.getItem('tripset_last_tab') || '').trim();
+            } catch (e) {}
+            if (saved && document.getElementById(saved)) return saved;
+
+            var active = document.querySelector('.tab-content.active');
+            if (active && active.id && active.id !== 'home') return String(active.id);
+
+            return 'home';
+        }
+
+        function forceActivateTab(tabId) {
+            var safeId = String(tabId || '').trim();
+            if (!safeId) return false;
+            var target = document.getElementById(safeId);
+            if (!target) return false;
+
+            document.querySelectorAll('.tab-content').forEach(function(el) {
+                el.classList.remove('active');
+            });
+            target.classList.add('active');
+
+            document.querySelectorAll('.nav-btn[data-tab]').forEach(function(btn) {
+                btn.classList.remove('nav-btn-active');
+                btn.classList.add('nav-btn-inactive');
+            });
+            document.querySelectorAll('.nav-btn[data-tab="' + safeId + '"]').forEach(function(btn) {
+                btn.classList.remove('nav-btn-inactive');
+                btn.classList.add('nav-btn-active');
+            });
+
+            window.pendingTabAfterUnlock = safeId;
+            try {
+                localStorage.setItem('tripset_last_tab', safeId);
+            } catch (e) {}
+
+            if (safeId === 'home' && window.startTypingEffect) window.startTypingEffect();
+            if (safeId === 'entries' || safeId === 'company-entries' || safeId === 'dashboard') {
+                if (window.fetchTrips) window.fetchTrips();
+            }
+            window.scrollTo({ top: 0, behavior: 'auto' });
+            return true;
+        }
+
+        function navigateToTabSafely(tabId) {
+            var safeId = String(tabId || '').trim();
+            if (!safeId) return false;
+
+            var switched = false;
+            if (window.showTab) {
+                try {
+                    window.showTab(safeId);
+                    switched = true;
+                } catch (err) {
+                    console.error('showTab failed, using force fallback:', err);
+                }
+            }
+
+            var target = document.getElementById(safeId);
+            if (!target || !target.classList.contains('active')) {
+                switched = forceActivateTab(safeId) || switched;
+            }
+            return switched;
+        }
+
+        function showAuthenticatedApp(targetTab) {
+            var login = document.getElementById('loginScreen');
+            var appEl = document.getElementById('appContent');
+            var splash = document.getElementById('splashScreen');
+
+            if (login) {
+                login.classList.remove('show');
+                setDisplayImportant(login, 'none');
+                setVisibilityImportant(login, 'hidden');
+            }
+            if (splash) {
+                splash.classList.add('hidden');
+                setDisplayImportant(splash, 'none');
+                setVisibilityImportant(splash, 'hidden');
+            }
+            if (appEl) {
+                setDisplayImportant(appEl, 'block');
+                setVisibilityImportant(appEl, 'visible');
+            }
+            setBodyScrollLocked(false);
+            initApp();
+            navigateToTabSafely(targetTab || 'home');
+        }
+
+        window.getRate = function() { return (window.appSettings && window.appSettings.rate) || 21; };
+        window.appFeatureFlags = { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+        window.activeAnnouncements = [];
+        window.allNotices = [];
+        window.lastNoticeSignature = '';
+        window.noticeModalDismissedKey = 'tripset_notice_modal_closed';
+
+        window.applyAppFeatureToggles = function() {
+            var flags = window.appFeatureFlags || { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+            document.querySelectorAll('[data-feature-control="pdf"]').forEach(function(el) {
+                el.style.display = flags.pdfEnabled === false ? 'none' : '';
+            });
+            document.querySelectorAll('[data-feature-control="excel"]').forEach(function(el) {
+                el.style.display = flags.excelEnabled === false ? 'none' : '';
+            });
+        };
+
+        function escapeNoticeText(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function formatNoticeDate(value) {
+            if (!value) return '';
+            try {
+                return new Date(value).toLocaleString('en-IN', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                return String(value || '');
+            }
+        }
+
+        function buildNoticeMarkup(items, compact) {
+            return items.map(function(item) {
+                var title = String((item && item.title) || '').trim();
+                var message = String((item && item.message) || '').trim();
+                var createdAt = formatNoticeDate(item && item.createdAt);
+                return '' +
+                    '<div class="rounded-xl border border-amber-200 bg-white/80 p-3">' +
+                        (title ? '<div class="font-black text-amber-800">' + escapeNoticeText(title) + '</div>' : '') +
+                        '<div class="mt-1 text-sm font-semibold text-slate-700">' + escapeNoticeText(message) + '</div>' +
+                        (createdAt ? '<div class="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">' + escapeNoticeText(createdAt) + '</div>' : '') +
+                    '</div>';
+            }).join('');
+        }
+
+        function hasDismissedNoticeModal() {
+            try {
+                return sessionStorage.getItem(window.noticeModalDismissedKey) === '1';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function setDismissedNoticeModal(value) {
+            try {
+                if (value) sessionStorage.setItem(window.noticeModalDismissedKey, '1');
+                else sessionStorage.removeItem(window.noticeModalDismissedKey);
+            } catch (e) {}
+        }
+
+        function isHomeAnnouncementContext() {
+            var pathname = String((window.location && window.location.pathname) || '/').trim() || '/';
+            var normalizedPath = pathname === '/' ? '/' : pathname.replace(new RegExp('/+$'), '');
+            if (normalizedPath !== '/') return false;
+            var homeTab = document.getElementById('home');
+            return !!(homeTab && homeTab.classList.contains('active'));
+        }
+
+        window.syncAnnouncementVisibility = function() {
+            var panel = document.getElementById('announcementPanel');
+            var modal = document.getElementById('noticeModal');
+            var canShow = isHomeAnnouncementContext();
+            if (!canShow) {
+                if (panel) panel.classList.add('hidden');
+                if (modal) modal.classList.add('hidden');
+            }
+            return canShow;
+        };
+
+        window.renderNoticeModal = function() {
+            var list = document.getElementById('noticeModalList');
+            if (!list) return;
+            var items = Array.isArray(window.allNotices) && window.allNotices.length ? window.allNotices : (Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : []);
+            if (!items.length) {
+                list.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm font-bold text-slate-500">' + escapeNoticeText(t('notices.empty')) + '</div>';
+                return;
+            }
+            list.innerHTML = buildNoticeMarkup(items, false);
+        };
+
+        window.renderNoticeSection = function() {
+            var summary = document.getElementById('noticeSectionSummary');
+            var list = document.getElementById('noticeSectionList');
+            if (!summary || !list) return;
+            var items = Array.isArray(window.allNotices) && window.allNotices.length ? window.allNotices : (Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : []);
+            var count = items.length;
+            summary.textContent = count > 0
+                ? t(count === 1 ? 'notices.count_one' : 'notices.count_other', { count: count })
+                : t('notices.empty');
+            if (!items.length) {
+                list.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">' + escapeNoticeText(t('notices.empty')) + '</div>';
+                return;
+            }
+            list.innerHTML = buildNoticeMarkup(items, false);
+        };
+
+        window.openNoticeModal = function(forceOpen) {
+            var modal = document.getElementById('noticeModal');
+            if (!modal) return;
+            if (!isHomeAnnouncementContext()) {
+                modal.classList.add('hidden');
+                return;
+            }
+            window.renderNoticeModal();
+            if (!Array.isArray(window.activeAnnouncements) || !window.activeAnnouncements.length) return;
+            if (!forceOpen && hasDismissedNoticeModal()) return;
+            modal.classList.remove('hidden');
+        };
+
+        window.closeNoticeModal = function() {
+            var modal = document.getElementById('noticeModal');
+            if (modal) modal.classList.add('hidden');
+            setDismissedNoticeModal(true);
+        };
+
+        window.renderAnnouncements = function() {
+            var panel = document.getElementById('announcementPanel');
+            var list = document.getElementById('announcementList');
+            if (!panel || !list) return;
+            var items = Array.isArray(window.activeAnnouncements) ? window.activeAnnouncements : [];
+            if (!items.length) {
+                panel.classList.add('hidden');
+                list.innerHTML = '';
+                window.renderNoticeModal();
+                window.renderNoticeSection();
+                return;
+            }
+            if (!window.syncAnnouncementVisibility()) {
+                panel.classList.add('hidden');
+                window.renderNoticeSection();
+                return;
+            }
+            panel.classList.remove('hidden');
+            list.innerHTML = buildNoticeMarkup(items.slice(0, 3), true);
+            window.renderNoticeModal();
+            window.renderNoticeSection();
+        };
+
+        window.loadAppConfig = async function(langOverride) {
+            try {
+                var currentLanguage = String(
+                    langOverride
+                    || (window.appSettings && window.appSettings.language)
+                    || (window.i18next && window.i18next.language)
+                    || getSavedLanguage()
+                    || 'en'
+                ).trim().toLowerCase();
+                var query = '?lang=' + encodeURIComponent(currentLanguage);
+                var res = await fetch('/api/app/config' + query, { credentials: 'include', cache: 'no-store' });
+                if (!res.ok) throw new Error('Failed to load app config');
+                var cfg = await res.json();
+                var features = (cfg && cfg.features) || {};
+                window.appFeatureFlags = {
+                    signupEnabled: features.signupEnabled !== false,
+                    pdfEnabled: features.pdfEnabled !== false,
+                    excelEnabled: features.excelEnabled !== false
+                };
+                window.appSettings = window.appSettings || {};
+                window.appSettings.language = String((cfg && cfg.language) || currentLanguage || 'en').trim().toLowerCase();
+                window.activeAnnouncements = Array.isArray(cfg && cfg.announcements) ? cfg.announcements : [];
+                window.allNotices = window.activeAnnouncements.slice();
+                var nextNoticeSignature = window.activeAnnouncements.map(function(item) {
+                    return [
+                        String((item && item._id) || ''),
+                        String((item && item.updatedAt) || ''),
+                        String((item && item.language) || '')
+                    ].join(':');
+                }).join('|');
+                if (window.lastNoticeSignature !== nextNoticeSignature) {
+                    window.lastNoticeSignature = nextNoticeSignature;
+                    setDismissedNoticeModal(false);
+                }
+            } catch (err) {
+                console.error('loadAppConfig error:', err);
+                window.appFeatureFlags = window.appFeatureFlags || { signupEnabled: true, pdfEnabled: true, excelEnabled: true };
+                window.activeAnnouncements = window.activeAnnouncements || [];
+            }
+            window.applyAppFeatureToggles();
+            window.renderAnnouncements();
+            window.openNoticeModal(false);
+        };
+
+        window.loadNotices = async function(showFeedback) {
+            try {
+                var currentLanguage = String(
+                    (window.appSettings && window.appSettings.language)
+                    || (window.i18next && window.i18next.language)
+                    || getSavedLanguage()
+                    || 'en'
+                ).trim().toLowerCase();
+                var res = await fetch('/api/notices?lang=' + encodeURIComponent(currentLanguage), {
+                    credentials: 'include',
+                    cache: 'no-store'
+                });
+                if (!res.ok) throw new Error('Failed to load notices');
+                var payload = await res.json();
+                var notices = Array.isArray(payload && payload.notices) ? payload.notices : [];
+                window.allNotices = notices;
+                window.activeAnnouncements = notices.slice();
+                window.renderAnnouncements();
+                if (showFeedback) showToast('Notices refreshed');
+                return notices;
+            } catch (err) {
+                console.error('loadNotices error:', err);
+                window.renderNoticeSection();
+                if (showFeedback) showToast('Failed to refresh notices');
+                return [];
+            }
+        };
+
+        window.trackReportDownload = async function(reportType) {
+            try {
+                await fetch('/api/activity/report-download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ reportType: String(reportType || 'report') })
+                });
+            } catch (err) {}
+        };
+
+        function initApp() {
+            if (appInitialized) return;
+            appInitialized = true;
+            window.appSettings = {
+                rate: 21,
+                companyName: String(window.currentUserDisplayName || 'Pratham'),
+                language: getSavedLanguage(),
+                darkMode: 'off',
+                installPromptShown: false,
+                invoiceLogoUrl: '/icon-512.png',
+                invoiceCustomerName: 'Walk-in Customer',
+                invoiceCustomerContact: '',
+                invoiceTaxPercent: 0,
+                invoicePaymentStatus: 'Pending'
+            };
+            Promise.resolve()
+                .then(function() { return window.loadSettings(); })
+                .catch(function(err) {
+                    console.error('loadSettings during init failed:', err);
+                    return window.appSettings;
+                })
+                .then(function() {
+                    return window.loadAppConfig(window.appSettings && window.appSettings.language);
+                })
+                .then(function() {
+                var today = new Date();
+                var currentMonth = today.toISOString().slice(0, 7);
+                var dashFilter = document.getElementById('dashMonthFilter');
+                if (dashFilter) dashFilter.value = currentMonth;
+                var invoiceMonth = document.getElementById('invoiceMonth');
+                if (invoiceMonth) invoiceMonth.value = currentMonth;
+                fetchTrips();
+                window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
+            }).catch(function(err) {
+                console.error('initApp failed:', err);
+                fetchTrips();
+                window.startTypingEffect();
+                setTimeout(showInstallPromptIfNeeded, 1800);
+            });
+        }
+
+        window.doLogin = async function() {
+            var uEl = document.getElementById('loginUsername');
+            var pEl = document.getElementById('loginPassword');
+            var username = String((uEl && uEl.value) || '').trim();
+            var password = String((pEl && pEl.value) || '').trim();
+            if (!username || !password) return;
+
+            try {
+                var res = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                if (!res.ok) {
+                    var errText = 'Invalid credentials';
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) errText = String(errData.error);
+                    } catch (e) {}
+                    if (pEl) pEl.value = '';
+                    if (uEl) uEl.focus();
+                    alert(errText);
+                    return;
+                }
+                if (window.bootstrapAuth) {
+                    await window.bootstrapAuth();
+                } else {
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert('Login failed');
+            }
+        };
+
+        window.doLogout = async function() {
+            try {
+                await fetch('/auth/logout', { method: 'POST' });
+            } catch (e) {}
+            location.reload();
+        };
+
+        window.bootstrapAuth = async function() {
+            try {
+                console.log('🔐 bootstrapAuth: Checking auth status...');
+                var res = await fetch('/api/auth/status', { 
+                    cache: 'no-store',
+                    credentials: 'include'
+                });
+                var s = await res.json();
+                console.log('🔐 bootstrapAuth: Status response:', JSON.stringify(s));
+                if (!res.ok || !s || !s.isAuthenticated) {
+                    console.log('🔐 bootstrapAuth: Not authenticated, redirecting to login');
+                    showLoginScreen();
+                    return;
+                }
+                setAuthenticatedIdentity(s);
+                applyTranslations();
+                window.pendingTabAfterUnlock = 'home';
+                showAuthenticatedApp('home');
+            } catch (e) {
+                console.error('🔐 bootstrapAuth: Error:', e);
+                showLoginScreen();
+            }
+        };
+
+        var DELETE_ACCOUNT_CONFIRM_TEXT = 'Yes, I want to delete my account';
+
+        function updateDeleteAccountConfirmState() {
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            var btn = document.getElementById('confirmDeleteAccountBtn');
+            if (!terms || !finalBox || !btn) return;
+            var ready = !!terms.checked && !!finalBox.checked;
+            btn.disabled = !ready;
+            if (ready) {
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+            } else {
+                btn.classList.add('opacity-60', 'cursor-not-allowed');
+            }
+        }
+
+        window.openDeleteAccountModal = function() {
+            if (!(window.authProfile && window.authProfile.canDeleteAccount)) {
+                showToast(t('toast.deleteAccountNotAllowed'));
+                return;
+            }
+            var m = document.getElementById('deleteAccountModal');
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            if (terms) terms.checked = false;
+            if (finalBox) finalBox.checked = false;
+            updateDeleteAccountConfirmState();
+            if (m) m.classList.remove('hidden');
+        };
+
+        window.closeDeleteAccountModal = function() {
+            var m = document.getElementById('deleteAccountModal');
+            if (m) m.classList.add('hidden');
+        };
+
+        window.confirmDeleteAccount = async function() {
+            if (!(window.authProfile && window.authProfile.canDeleteAccount)) {
+                showToast(t('toast.deleteAccountNotAllowed'));
+                return;
+            }
+
+            var terms = document.getElementById('deleteTermsCheckbox');
+            var finalBox = document.getElementById('deleteFinalCheckbox');
+            var btn = document.getElementById('confirmDeleteAccountBtn');
+            if (!terms || !finalBox || !btn) return;
+
+            if (!terms.checked) {
+                showToast(t('toast.deleteAccountStep1'));
+                return;
+            }
+            if (!finalBox.checked) {
+                showToast(t('toast.deleteAccountStep2'));
+                return;
+            }
+
+            var originalLabel = btn.innerHTML;
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            btn.innerText = 'Deleting...';
+
+            try {
+                var res = await fetch('/api/account/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        termsAccepted: true,
+                        finalConfirmed: true,
+                        finalConfirmation: DELETE_ACCOUNT_CONFIRM_TEXT
+                    })
+                });
+
+                if (!res.ok) {
+                    var errText = t('toast.deleteAccountFailed');
+                    try {
+                        var errData = await res.json();
+                        if (errData && errData.error) errText = String(errData.error);
+                    } catch (e) {}
+                    showToast(errText);
+                    btn.innerHTML = originalLabel;
+                    updateDeleteAccountConfirmState();
+                    return;
+                }
+
+                showToast(t('toast.deleteAccountSuccess'));
+                window.closeDeleteAccountModal();
+                setTimeout(function() {
+                    window.location.href = '/signup';
+                }, 700);
+            } catch (err) {
+                showToast(t('toast.deleteAccountFailed'));
+                btn.innerHTML = originalLabel;
+                updateDeleteAccountConfirmState();
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var loginU = document.getElementById('loginUsername');
+            var loginP = document.getElementById('loginPassword');
+            if (loginU) loginU.addEventListener('keydown', function(e) { if (e.key === 'Enter') window.doLogin(); });
+            if (loginP) loginP.addEventListener('keydown', function(e) { if (e.key === 'Enter') window.doLogin(); });
+
+            var invModal = document.getElementById('invoiceMonthModal');
+            if (invModal) {
+                invModal.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        window.generateInvoiceFromModal();
+                    }
+                });
+            }
+
+            var deleteTerms = document.getElementById('deleteTermsCheckbox');
+            var deleteFinal = document.getElementById('deleteFinalCheckbox');
+            if (deleteTerms) deleteTerms.addEventListener('change', updateDeleteAccountConfirmState);
+            if (deleteFinal) deleteFinal.addEventListener('change', updateDeleteAccountConfirmState);
+            updateDeleteAccountConfirmState();
+            refreshDeleteAccountUI();
+        });
+
+        // Splash Screen Logic
+        function hideSplashScreen() {
+            var splash = document.getElementById('splashScreen');
+            if (splash) {
+                splash.classList.add('hidden');
+                setTimeout(function() {
+                    splash.style.display = 'none';
+                }, 500);
+            }
+        }
+
+        // Offline Detection
+        function initOfflineDetection() {
+            var banner = document.getElementById('offlineBanner');
+            var offlineText = document.getElementById('offlineText');
+            if (!banner) return;
+
+            function updateOnlineStatus() {
+                if (navigator.onLine) {
+                    banner.classList.remove('show');
+                    banner.classList.add('online');
+                    if (offlineText) offlineText.textContent = t('status.online');
+                    setTimeout(function() {
+                        banner.classList.remove('show');
+                        setTimeout(function() {
+                            banner.classList.remove('online');
+                            if (offlineText) offlineText.textContent = t('status.offline');
+                        }, 2000);
+                    }, 3000);
+                } else {
+                    banner.classList.add('show');
+                    banner.classList.remove('online');
+                    if (offlineText) offlineText.textContent = t('status.offline');
+                }
+            }
+
+            window.addEventListener('online', updateOnlineStatus);
+            window.addEventListener('offline', updateOnlineStatus);
+            updateOnlineStatus();
+        }
+
+        // Install Prompt Logic (MongoDB only)
+        var deferredPrompt = null;
+        function isStandaloneMode() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+        function isIosDevice() {
+            return /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+        }
+
+function showInstallPromptIfNeeded() {
+            var prompt = document.getElementById('installPrompt');
+            if (!prompt || isStandaloneMode()) return;
+            if (deferredPrompt || isIosDevice()) {
+                prompt.classList.add('show');
+            } else {
+                prompt.classList.remove('show');
+            }
+        }
+
+        function saveInstallPromptShown() {
+            fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ installPromptShown: true })
+            }).then(function() {
+                if (window.appSettings) window.appSettings.installPromptShown = true;
+            }).catch(function() {});
+        }
+
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            setTimeout(showInstallPromptIfNeeded, 3000);
+        });
+
+        window.addEventListener('appinstalled', function() {
+            var prompt = document.getElementById('installPrompt');
+            if (prompt) prompt.classList.remove('show');
+            deferredPrompt = null;
+            saveInstallPromptShown();
+            showToast(t('toast.appInstalled'));
+        });
+
+        document.getElementById('installBtn') && document.getElementById('installBtn').addEventListener('click', function() {
+            if (!deferredPrompt) {
+                if (isIosDevice() && !isStandaloneMode()) {
+                    showToast(t('toast.iosInstallGuide'), 5200);
+                    return;
+                }
+                showToast(t('toast.installNotAvailable'));
+                return;
+            }
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then(function(choiceResult) {
+                if (choiceResult.outcome === 'accepted') {
+                    showToast(t('toast.installingApp'));
+                    saveInstallPromptShown();
+                }
+                deferredPrompt = null;
+                var prompt = document.getElementById('installPrompt');
+                if (prompt) prompt.classList.remove('show');
+            });
+        });
+
+        window.dismissInstallPrompt = function() {
+            var prompt = document.getElementById('installPrompt');
+            if (prompt) prompt.classList.remove('show');
+        };
+
+        // Auth bootstrap flow
+        var loginScreen = document.getElementById('loginScreen');
+        var appContent = document.getElementById('appContent');
+
+        function startAuthFlow() {
+            initI18n().finally(function() {
+                initOfflineDetection();
+                setTimeout(function() {
+                    if (window.bootstrapAuth) {
+                        window.bootstrapAuth().catch(function(err) {
+                            console.error('🔐 startAuthFlow: bootstrapAuth error:', err);
+                            showLoginScreen();
+                        });
+                    } else {
+                        console.error('🔐 startAuthFlow: bootstrapAuth function not found! Showing login screen.');
+                        showLoginScreen();
+                    }
+                }, 200);
+
+                // Hard fallback: if all screens are hidden, show login screen.
+                setTimeout(function() {
+                    var login = document.getElementById('loginScreen');
+                    var app = document.getElementById('appContent');
+                    var loginHidden = !login || window.getComputedStyle(login).display === 'none';
+                    var appHidden = !app || window.getComputedStyle(app).display === 'none';
+                    if (loginHidden && appHidden) {
+                        console.warn('🔐 startAuthFlow: All screens hidden. Forcing login fallback.');
+                        showLoginScreen();
+                    }
+                }, 1800);
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startAuthFlow);
+        } else {
+            startAuthFlow();
+        }
+
+        let kmChartInstance = null;
+let currentChartType = 'line';
+let dailyChartInstance = null;
+let profitChartInstance = null;
+let weeklyChartInstance = null;
+
+// Enhanced Service Worker Registration
+var isLocalhostApp = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+if ('serviceWorker' in navigator) {
+    if (isLocalhostApp) {
+        navigator.serviceWorker.getRegistrations()
+            .then(function(registrations) {
+                registrations.forEach(function(registration) {
+                    registration.unregister();
+                });
+            })
+            .catch(function(err) {
+                console.log('SW cleanup skipped on localhost:', err);
+            });
+    } else if (window.isSecureContext) {
+        var swUrl = '/sw.js';
+        navigator.serviceWorker.register(swUrl, { scope: '/' })
+            .then(function(registration) {
+                console.log("SW Registered ✅");
+                registration.update();
+
+                setInterval(function() {
+                    registration.update();
+                }, 60000);
+
+                registration.addEventListener('updatefound', function() {
+                    var newWorker = registration.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            showToast(t('toast.newVersion'), 5000);
+                        }
+                    });
+                });
+            })
+            .catch(function(err) {
+                console.log("SW Registration failed (this is OK if sw.js doesn't exist):", err);
+            });
+
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            window.location.reload();
+        });
+    }
+}
+
+
+function renderWeeklyChart(data) {
+
+    const monthInput = document.getElementById('dashMonthFilter');
+    if (!monthInput?.value) return;
+
+    const [year, month] = monthInput.value.split('-');
+    const rate = window.getRate ? window.getRate() : 21;
+
+    const weekly = {
+        W1: { trips: 0, km: 0, revenue: 0, profit: 0 },
+        W2: { trips: 0, km: 0, revenue: 0, profit: 0 },
+        W3: { trips: 0, km: 0, revenue: 0, profit: 0 },
+        W4: { trips: 0, km: 0, revenue: 0, profit: 0 },
+        W5: { trips: 0, km: 0, revenue: 0, profit: 0 }
+    };
+
+    data.forEach(e => {
+
+        if (!e.date) return;
+
+        const parts = e.date.split('-'); // dd-mm-yyyy
+        if (parts.length !== 3) return;
+
+
+        if (parts[1] !== month || parts[2] !== year) return;
+
+        const day = parseInt(parts[0]);
+        const week =
+            day <= 7 ? 'W1' :
+            day <= 14 ? 'W2' :
+            day <= 21 ? 'W3' :
+            day <= 28 ? 'W4' : 'W5';
+
+        const km = parseFloat(e.km || 0);
+        const revenue = parseFloat(e.total || 0);
+        const cng = parseFloat(e.cng || 0);
+        const exp = parseFloat(e.otherExpense || 0);
+
+        weekly[week].trips += 1;
+        weekly[week].km += km;
+        weekly[week].revenue += revenue;
+        weekly[week].profit += revenue - cng - exp;
+    });
+
+    const labels = Object.keys(weekly);
+    const tripsData = labels.map(w => weekly[w].trips);
+    const kmData = labels.map(w => weekly[w].km.toFixed(2));
+    const revenueData = labels.map(w => weekly[w].revenue.toFixed(2));
+    const profitData = labels.map(w => weekly[w].profit.toFixed(2));
+
+    const ctx = document.getElementById('weeklyChart');
+    if (!ctx) return;
+
+    if (weeklyChartInstance) weeklyChartInstance.destroy();
+
+    weeklyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: t('chart.trips'), data: tripsData },
+                { label: t('dashboard.km'), data: kmData },
+                { label: t('chart.revenue'), data: revenueData },
+                { label: t('chart.profit'), data: profitData }
+            ]
+        }
+    });
+
+}
+
+
+function renderProfitChart(data) {
+
+    const monthly = {};
+
+    data.forEach(e => {
+        if (!e.date) return;
+
+        const parts = e.date.split('-'); // dd-mm-yyyy
+        const key = parts[1] + "-" + parts[2];
+
+        const revenue = parseFloat(e.total || 0);
+        const cng = parseFloat(e.cng || 0);
+        const exp = parseFloat(e.otherExpense || 0);
+
+        if (!monthly[key]) monthly[key] = 0;
+
+        monthly[key] += revenue - cng - exp;
+    });
+
+    const labels = Object.keys(monthly);
+    const values = labels.map(m => monthly[m].toFixed(2));
+
+    const ctx = document.getElementById('profitChart');
+    if (!ctx) return;
+
+    if (profitChartInstance) profitChartInstance.destroy();
+
+    profitChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: t('chart.profit'),
+                data: values
+            }]
+        }
+    });
+}
+
+
+function renderDailyChart(data) {
+
+    const monthInput = document.getElementById('dashMonthFilter');
+    if (!monthInput?.value) return;
+
+    const [year, month] = monthInput.value.split('-');
+
+    const daily = {};
+
+    data.forEach(e => {
+        if (!e.date) return;
+
+        const parts = e.date.split('-'); // dd-mm-yyyy
+        if (parts[1] !== month || parts[2] !== year) return;
+
+        const day = parts[0];
+        const km = parseFloat(e.km || 0);
+        const amt = parseFloat(e.total || 0);
+
+        if (!daily[day]) daily[day] = { km: 0, revenue: 0 };
+
+        daily[day].km += km;
+        daily[day].revenue += amt;
+    });
+
+    const labels = Object.keys(daily).sort((a,b)=>a-b);
+    const kmVals = labels.map(d => daily[d].km.toFixed(2));
+    const revVals = labels.map(d => daily[d].revenue.toFixed(2));
+
+    const ctx = document.getElementById('dailyChart');
+    if (!ctx) return;
+
+    if (dailyChartInstance) dailyChartInstance.destroy();
+
+    dailyChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: t('dashboard.km'), data: kmVals, tension: 0.3 },
+                { label: t('chart.revenue'), data: revVals, tension: 0.3 }
+            ]
+        }
+    });
+}
+
+
+function renderKMChart(data) {
+
+    const rate = window.getRate ? window.getRate() : 21;
+
+    const monthlyData = {};
+
+    data.forEach(e => {
+        if (!e.date) return;
+
+        const parts = e.date.split('-'); // dd-mm-yyyy
+        if (parts.length !== 3) return;
+
+        const key = parts[1] + "-" + parts[2]; // mm-yyyy
+        const km = parseFloat(e.km || 0);
+        const amt = parseFloat(e.total || 0);
+
+        if (!monthlyData[key]) {
+            monthlyData[key] = { km: 0, revenue: 0 };
+        }
+
+        monthlyData[key].km += km;
+        monthlyData[key].revenue += amt;
+    });
+
+    const labels = Object.keys(monthlyData);
+    const kmValues = labels.map(m => monthlyData[m].km.toFixed(2));
+    const revenueValues = labels.map(m => monthlyData[m].revenue.toFixed(2));
+
+    const ctx = document.getElementById('kmChart');
+    if (!ctx) return;
+
+    // ✅ Destroy old chart (important)
+    if (kmChartInstance) kmChartInstance.destroy();
+
+    kmChartInstance = new Chart(ctx, {
+type: currentChartType,
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: t('chart.totalKm'),
+                    data: kmValues,
+                    tension: 0.3
+                },
+                {
+                    label: t('chart.revenue'),
+                    data: revenueValues,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    labels: {
+                        font: { weight: 'bold' }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function toggleChartType() {
+
+    if (!window.currentTrips) {
+        showToast(t('toast.noChartData'));
+        return;
+    }
+
+    currentChartType =
+        currentChartType === 'line' ? 'bar' : 'line';
+
+    console.log("Chart Type:", currentChartType);
+
+    renderKMChart(window.currentTrips);
+}
+
+
+        // ✅ Load Settings (MongoDB only)
+window.loadSettings = async function() {
+    try {
+        const res = await fetch('/api/settings', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch settings');
+        const s = await res.json();
+        const preferredLanguage = String(s.language || getSavedLanguage() || 'en').trim().toLowerCase();
+        window.appSettings = {
+            rate: Number(s.rate) || 21,
+            companyName: String(s.companyName || window.currentUserDisplayName || 'Pratham'),
+            language: SUPPORTED_LANGUAGES.indexOf(preferredLanguage) !== -1 ? preferredLanguage : 'en',
+            darkMode: String(s.darkMode || 'off'),
+            installPromptShown: !!s.installPromptShown,
+            invoiceLogoUrl: String(s.invoiceLogoUrl || '/icon-512.png'),
+            invoiceCustomerName: String(s.invoiceCustomerName || 'Walk-in Customer'),
+            invoiceCustomerContact: String(s.invoiceCustomerContact || ''),
+            invoiceTaxPercent: Number(s.invoiceTaxPercent || 0),
+            invoicePaymentStatus: String(s.invoicePaymentStatus || 'Pending')
+        };
+        var rateEl = document.getElementById('rateSetting');
+        var companyEl = document.getElementById('companyName');
+        var rateDisplay = document.getElementById('rateDisplay');
+        var logoEl = document.getElementById('invoiceLogoUrl');
+        var customerEl = document.getElementById('invoiceCustomerName');
+        var contactEl = document.getElementById('invoiceCustomerContact');
+        var taxEl = document.getElementById('invoiceTaxPercent');
+        var statusEl = document.getElementById('invoicePaymentStatus');
+        var languageEl = document.getElementById('languageSelect');
+        if (rateEl) rateEl.value = window.appSettings.rate;
+        if (companyEl) companyEl.value = window.appSettings.companyName;
+        if (rateDisplay) rateDisplay.value = window.appSettings.rate;
+        if (logoEl) logoEl.value = window.appSettings.invoiceLogoUrl;
+        if (customerEl) customerEl.value = window.appSettings.invoiceCustomerName;
+        if (contactEl) contactEl.value = window.appSettings.invoiceCustomerContact;
+        if (taxEl) taxEl.value = window.appSettings.invoiceTaxPercent;
+        if (statusEl) statusEl.value = window.appSettings.invoicePaymentStatus;
+        if (languageEl) languageEl.value = window.appSettings.language;
+        saveLanguage(window.appSettings.language);
+        if (window.i18next && window.i18next.language !== window.appSettings.language) {
+            try {
+                await window.i18next.changeLanguage(window.appSettings.language);
+                applyTranslations();
+                window.startTypingEffect();
+            } catch (langErr) {
+                console.error('loadSettings language sync failed:', langErr);
+            }
+        }
+        if (window.appSettings.darkMode === 'on') document.body.classList.add('dark');
+        else document.body.classList.remove('dark');
+        return window.appSettings;
+    } catch (e) {
+        console.error('loadSettings error:', e);
+        window.appSettings = window.appSettings || {
+            rate: 21,
+            companyName: String(window.currentUserDisplayName || 'Pratham'),
+            language: getSavedLanguage(),
+            darkMode: 'off',
+            installPromptShown: false,
+            invoiceLogoUrl: '/icon-512.png',
+            invoiceCustomerName: 'Walk-in Customer',
+            invoiceCustomerContact: '',
+            invoiceTaxPercent: 0,
+            invoicePaymentStatus: 'Pending'
+        };
+        return window.appSettings;
+    }
+};
+
+// ✅ Save Settings (MongoDB only)
+window.saveSettings = async function() {
+    const rate = document.getElementById('rateSetting').value || 21;
+    const company = document.getElementById('companyName').value || '';
+    const language = document.getElementById('languageSelect')?.value || ((window.appSettings && window.appSettings.language) || getSavedLanguage());
+    const invoiceLogoUrl = document.getElementById('invoiceLogoUrl')?.value || '/icon-512.png';
+    const invoiceCustomerName = document.getElementById('invoiceCustomerName')?.value || '';
+    const invoiceCustomerContact = document.getElementById('invoiceCustomerContact')?.value || '';
+    const invoiceTaxPercent = document.getElementById('invoiceTaxPercent')?.value || 0;
+    const invoicePaymentStatus = document.getElementById('invoicePaymentStatus')?.value || 'Pending';
+
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                rate: Number(rate),
+                companyName: company,
+                language: language,
+                invoiceLogoUrl: invoiceLogoUrl,
+                invoiceCustomerName: invoiceCustomerName,
+                invoiceCustomerContact: invoiceCustomerContact,
+                invoiceTaxPercent: Number(invoiceTaxPercent),
+                invoicePaymentStatus: invoicePaymentStatus
+            })
+        });
+        if (!res.ok) throw new Error('Failed to save');
+        const s = await res.json();
+        window.appSettings.rate = Number(s.rate) || 21;
+        window.appSettings.companyName = String(s.companyName || window.currentUserDisplayName || 'Pratham');
+        window.appSettings.language = String(s.language || language || 'en');
+        window.appSettings.invoiceLogoUrl = String(s.invoiceLogoUrl || '/icon-512.png');
+        window.appSettings.invoiceCustomerName = String(s.invoiceCustomerName || 'Walk-in Customer');
+        window.appSettings.invoiceCustomerContact = String(s.invoiceCustomerContact || '');
+        window.appSettings.invoiceTaxPercent = Number(s.invoiceTaxPercent || 0);
+        window.appSettings.invoicePaymentStatus = String(s.invoicePaymentStatus || 'Pending');
+        var rateDisplay = document.getElementById('rateDisplay');
+        if (rateDisplay) rateDisplay.value = window.appSettings.rate;
+        saveLanguage(window.appSettings.language);
+        if (window.i18next && window.i18next.language !== window.appSettings.language) {
+            await window.i18next.changeLanguage(window.appSettings.language);
+            applyTranslations();
+            window.startTypingEffect();
+        }
+        await window.loadAppConfig(window.appSettings.language);
+        showToast(t('toast.settingsSaved'));
+    } catch (e) {
+        showToast(t('toast.settingsFailed'));
+    }
+};
+
+
+window.exportExcel = async function () {
+    if (window.appFeatureFlags && window.appFeatureFlags.excelEnabled === false) {
+        showToast('Excel export disabled by admin');
+        return;
+    }
+
+    showToast(t('toast.preparingExcel'));
+
+    let data;
+    try {
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            throw new Error('Failed to load trips');
+        }
+        data = await res.json();
+    } catch (err) {
+        console.error('Excel export error:', err);
+        showToast('Failed to load trips');
+        return;
+    }
+    if (!data.length) {
+        showToast(t('toast.noData'));
+        return;
+    }
+
+    const rate = window.getRate ? window.getRate() : 21;
+    const excelData = data.map(e => {
+        const km = parseFloat(e.km || 0);
+        return {
+            Date: e.date,
+            TripID: e.tripId,
+            Pickup: e.pickup,
+            Drop: e.drop,
+            Person: e.person,
+            KM: km,
+            Rate: rate,
+            CompanyTotal: (km * rate).toFixed(2)
+        };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Company Report");
+
+    XLSX.writeFile(wb, "Company_Report.xlsx");
+    window.trackReportDownload('excel');
+
+    showToast(t('toast.excelDownloaded'));
+};
+
+// ✅ Download Backup Function
+window.downloadBackup = async function() {
+    try {
+        showToast(t('toast.preparingBackup'));
+        
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            throw new Error('Failed to fetch trips');
+        }
+        
+        const data = await res.json();
+        
+        if (!data || data.length === 0) {
+            showToast(t('toast.noTripsBackup'));
+            return;
+        }
+
+        // Create backup object with metadata
+        const backup = {
+            version: "1.0",
+            exportDate: new Date().toISOString(),
+            totalTrips: data.length,
+            trips: data
+        };
+
+        // Convert to JSON string with formatting
+        const jsonString = JSON.stringify(backup, null, 2);
+        
+        // Create blob and download
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'trips_backup_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(t('toast.backupDownloaded', { count: data.length }));
+    } catch (err) {
+        console.error("Backup error:", err);
+        showToast(t('toast.backupDownloadFailed'));
+    }
+};
+
+// ✅ Restore Backup Function
+window.handleRestoreBackup = async function(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    // Validate file type
+    if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+        showToast(t('toast.invalidFileType'));
+        event.target.value = ''; // Reset input
+        return;
+    }
+
+    try {
+        showToast(t('toast.readingBackup'));
+        
+        // Read file as text
+        const fileContent = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+
+        // Parse JSON
+        let backupData;
+        try {
+            backupData = JSON.parse(fileContent);
+        } catch (parseError) {
+            showToast(t('toast.invalidJson'));
+            event.target.value = '';
+            return;
+        }
+
+        // Validate backup structure
+        let trips = [];
+        if (Array.isArray(backupData)) {
+            // If it's a direct array of trips
+            trips = backupData;
+        } else if (backupData.trips && Array.isArray(backupData.trips)) {
+            // If it's a backup object with trips array
+            trips = backupData.trips;
+        } else {
+            showToast(t('toast.invalidBackupFormat'));
+            event.target.value = '';
+            return;
+        }
+
+        if (trips.length === 0) {
+            showToast(t('toast.backupEmpty'));
+            event.target.value = '';
+            return;
+        }
+
+        // Validate trip structure
+        const requiredFields = ['date', 'tripId', 'pickup', 'drop', 'km', 'total'];
+        const invalidTrips = [];
+        
+        trips.forEach((trip, index) => {
+            for (let field of requiredFields) {
+                if (trip[field] === undefined || trip[field] === null) {
+                    invalidTrips.push('Trip ' + (index + 1) + ': missing ' + field);
+                }
+            }
+        });
+
+        if (invalidTrips.length > 0) {
+            showToast(t('toast.invalidTripData', { detail: invalidTrips[0] }));
+            event.target.value = '';
+            return;
+        }
+
+        // Confirm restore
+        const confirmMessage = t('toast.restoreConfirm', { count: trips.length });
+        if (!confirm(confirmMessage)) {
+            event.target.value = '';
+            return;
+        }
+
+        showToast(t('toast.restoringTrips', { count: trips.length }));
+
+        // Send to API
+        const res = await fetch('/api/trips/bulk', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ trips: trips })
+        });
+
+        let result = {};
+        try {
+            result = await res.json();
+        } catch (parseErr) {
+            result = {};
+        }
+
+        if (res.ok) {
+            showToast(t('toast.restoredTrips', { count: result.inserted }));
+            // Refresh trips list
+            if (window.fetchTrips) {
+                setTimeout(() => {
+                    fetchTrips();
+                }, 500);
+            }
+        } else {
+            showToast(t('toast.restoreFailed', { error: result.error || 'Unknown error' }));
+            if (result.inserted > 0) {
+                showToast(t('toast.restorePartial', { count: result.inserted }));
+            }
+        }
+
+        // Reset file input
+        event.target.value = '';
+    } catch (err) {
+        console.error("Restore error:", err);
+        showToast(t('toast.restoreFailedGeneric'));
+        event.target.value = '';
+    }
+};
+
+
+        /* DARK MODE TOGGLE (MongoDB only) */
+window.toggleDarkMode = async function() {
+    document.body.classList.toggle('dark');
+    const isDark = document.body.classList.contains('dark');
+    try {
+        await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ darkMode: isDark ? 'on' : 'off' })
+        });
+        if (window.appSettings) window.appSettings.darkMode = isDark ? 'on' : 'off';
+    } catch (e) {}
+    showToast(isDark ? t('toast.darkModeOn') : t('toast.lightModeOn'));
+};
+
+/* LOAD SAVED MODE - now handled inside loadSettings */
+window.loadDarkMode = function() { /* No-op; loadSettings applies darkMode */ };
+
+        window.editingId = null;
+
+
+window.openEditModal = function(id) {
+    if (!id) {
+        console.error("Edit: No ID provided");
+        showToast(t('toast.errorNoTripId'));
+        return;
+    }
+    
+    if (!window.currentTrips) {
+        showToast(t('toast.tripsNotLoaded'));
+        return;
+    }
+    
+    const trip = window.currentTrips.find(t => t._id === id);
+    if (!trip) {
+        console.error("Edit: Trip not found with ID:", id);
+        showToast(t('toast.tripNotFound'));
+        return;
+    }
+
+    const modal = document.getElementById('editModal');
+    if (!modal) {
+        console.error("Edit: Modal element not found");
+        return;
+    }
+
+    modal.classList.remove('hidden');
+
+    document.getElementById('e-date').value = convertDMYtoYMD(trip.date);
+    document.getElementById('e-tripId').value = trip.tripId || '';
+    document.getElementById('e-pickup').value = trip.pickup || '';
+    document.getElementById('e-drop').value = trip.drop || '';
+    document.getElementById('e-person').value = trip.person || 0;
+    document.getElementById('e-km').value = trip.km || 0;
+    document.getElementById('e-other').value = trip.other || 0;
+    document.getElementById('e-cng').value = trip.cng || 0;
+    document.getElementById('e-exp').value = trip.otherExpense || 0;
+
+    calcEditTotal();
+    window.editingId = id;
+};
+function convertDMYtoYMD(dmy) {
+    if (!dmy) return "";
+    const parts = dmy.split("-");
+    if (parts.length !== 3) return "";
+    return parts[2] + "-" + parts[1] + "-" + parts[0];
+}
+    function calcEditTotal() {
+    const km = parseFloat(document.getElementById('e-km').value) || 0;
+    const other = parseFloat(document.getElementById('e-other').value) || 0;
+    const cng = parseFloat(document.getElementById('e-cng').value) || 0;
+    const exp = parseFloat(document.getElementById('e-exp').value) || 0;
+    const rate = window.getRate ? window.getRate() : 21;
+    const total = (km * rate + other) - cng - exp;
+
+    document.getElementById('e-total').innerText =
+        "₹ " + total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+}
+window.updateTrip = async function() {
+    if (!window.editingId) return;
+
+    const km = parseFloat(document.getElementById('e-km').value) || 0;
+    const other = parseFloat(document.getElementById('e-other').value) || 0;
+    const cng = parseFloat(document.getElementById('e-cng').value) || 0;
+    const exp = parseFloat(document.getElementById('e-exp').value) || 0;
+    const rate = window.getRate ? window.getRate() : 21;
+    const total = (km * rate + other) - cng - exp;
+
+    const payload = {
+        date: window.formatDateToDMY(document.getElementById('e-date').value),
+        tripId: document.getElementById('e-tripId').value,
+        pickup: document.getElementById('e-pickup').value,
+        drop: document.getElementById('e-drop').value,
+        person: parseInt(document.getElementById('e-person').value) || 0,
+        km,
+        other,
+        cng,
+        otherExpense: exp,
+        total: total.toFixed(2)
+    };
+
+    const res = await fetch('/api/trips/' + window.editingId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+        showToast(t('toast.tripUpdated'));
+        window.closeEditModal();
+        fetchTrips();
+    }
+};
+
+
+window.closeEditModal = function() {
+    document.getElementById('editModal').classList.add('hidden');
+    window.editingId = null;
+};
+
+
+
+            let typingTimeout;
+
+            window.formatDateToDMY = function(dateStr) {
+                if(!dateStr) return "";
+                const parts = dateStr.split('-');
+                if(parts.length !== 3) return dateStr;
+                return parts[2] + "-" + parts[1] + "-" + parts[0];
+            };
+
+            window.calculateTotal = function() {
+                const km = parseFloat(document.getElementById('km').value) || 0;
+                const other = parseFloat(document.getElementById('other').value) || 0;
+                const cng = parseFloat(document.getElementById('cng').value) || 0;
+                const otherExp = parseFloat(document.getElementById('otherExpense').value) || 0;
+                const rate = window.getRate ? window.getRate() : 21;
+                const total = (km * rate + other) - cng - otherExp;
+                document.getElementById('totalDisplay').innerText = "₹ " + total.toLocaleString('en-IN', {minimumFractionDigits: 2});
+            };
+
+           window.showTab = function(id) {
+    window.pendingTabAfterUnlock = String(id || '').trim();
+    try { localStorage.setItem('tripset_last_tab', window.pendingTabAfterUnlock); } catch (e) {}
+
+    document.querySelectorAll('.tab-content')
+        .forEach(c => c.classList.remove('active'));
+
+    var nextTab = document.getElementById(id);
+    if (nextTab) nextTab.classList.add('active');
+
+    document.querySelectorAll('.nav-btn[data-tab]')
+        .forEach(btn => {
+            btn.classList.remove('nav-btn-active');
+            btn.classList.add('nav-btn-inactive');
+        });
+
+    document.querySelectorAll('.nav-btn[data-tab="' + id + '"]')
+        .forEach(btn => {
+            btn.classList.remove('nav-btn-inactive');
+            btn.classList.add('nav-btn-active');
+        });
+
+    if (id === 'entries' || id === 'company-entries' || id === 'dashboard')
+        fetchTrips();
+
+    if (id === 'notices' && window.loadNotices)
+        window.loadNotices(false);
+
+    if (id === 'home')
+        window.startTypingEffect();
+
+    if (window.innerWidth < 768) window.toggleMobileNav(false);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+            window.startTypingEffect = function() {
+                const text = t('home.welcome');
+                const target = document.getElementById('typing-text');
+                if(!target) return;
+                if (typingTimeout) {
+                    clearTimeout(typingTimeout);
+                    typingTimeout = null;
+                }
+
+                const finalText = String(text || ('Welcome ' + String(window.currentUserDisplayName || 'Pratham')));
+                let index = 0;
+                target.textContent = '';
+
+                (function typeNext() {
+                    if (!document.body.contains(target)) return;
+                    target.textContent = finalText.slice(0, index);
+                    if (index < finalText.length) {
+                        index += 1;
+                        typingTimeout = setTimeout(typeNext, 90);
+                    } else {
+                        typingTimeout = null;
+                    }
+                })();
+            };
+
+async function fetchTrips() {
+    let data;
+    try {
+        const res = await fetch('/api/trips', {
+            cache: 'no-store',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            throw new Error('Failed to load trips');
+        }
+        data = await res.json();
+    } catch (err) {
+        console.error('Trips API error:', err);
+        showToast('Failed to load trip data');
+        return;
+    }
+    const entriesMonth = document.getElementById('entriesMonthFilter')?.value;
+    const companyMonth = document.getElementById('monthFilter')?.value;
+    const dashMonth = document.getElementById('dashMonthFilter')?.value;
+
+    let filtered = data;
+
+    // ✅ ENTRIES PAGE FILTER
+    if (entriesMonth && document.getElementById('entries')?.classList.contains('active')) {
+
+        const [year, month] = entriesMonth.split('-');
+
+        filtered = data.filter(e => {
+            if (!e.date) return false;
+
+            const parts = e.date.split('-'); // dd-mm-yyyy
+            if (parts.length !== 3) return false;
+
+            return parts[1] === month && parts[2] === year;
+        });
+    }
+
+    // ✅ COMPANY PAGE FILTER
+    if (companyMonth && document.getElementById('company-entries')?.classList.contains('active')) {
+
+        const [year, month] = companyMonth.split('-');
+
+        filtered = data.filter(e => {
+            if (!e.date) return false;
+
+            const parts = e.date.split('-'); // dd-mm-yyyy
+            if (parts.length !== 3) return false;
+
+            return parts[1] === month && parts[2] === year;
+        });
+    }
+
+    // ✅ DASHBOARD PAGE FILTER
+    if (dashMonth && document.getElementById('dashboard')?.classList.contains('active')) {
+
+        const [year, month] = dashMonth.split('-');
+
+        filtered = data.filter(e => {
+            if (!e.date) return false;
+
+            const parts = e.date.split('-');
+            if (parts.length !== 3) return false;
+
+            return parts[1] === month && parts[2] === year;
+        });
+    }
+
+    window.currentTrips = filtered;
+    renderTables(filtered);
+}
+
+
+    // ✅ ADD HERE
+    window.applyMonthFilter = function() {
+        fetchTrips();
+    };
+
+    window.applyEntriesMonthFilter = function() {
+        fetchTrips();
+    };
+
+
+
+            window.saveToMongo = async function() {
+                const km = parseFloat(document.getElementById('km').value) || 0;
+                const other = parseFloat(document.getElementById('other').value) || 0;
+                const cng = parseFloat(document.getElementById('cng').value) || 0;
+                const otherExp = parseFloat(document.getElementById('otherExpense').value) || 0;
+                const rate = window.getRate ? window.getRate() : 21;
+                const totalVal = (km * rate + other) - cng - otherExp;
+
+                const payload = {
+                    date: window.formatDateToDMY(document.getElementById('date').value),
+                    pickupTime: document.getElementById('pickupTime').value,
+                    dropTime: document.getElementById('dropTime').value,
+                    tripId: document.getElementById('tripId').value,
+                    pickup: document.getElementById('pickup').value,
+                    drop: document.getElementById('drop').value,
+                    person: parseInt(document.getElementById('person').value) || 0,
+                    km: km, rate: rate, other: other, cng: cng, otherExpense: otherExp,
+                    total: totalVal.toFixed(2)
+                };
+
+                const res = await fetch('/api/trips', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if(res.ok) {
+                    showToast(t('toast.dataSaved'));
+                    document.getElementById('tripForm').reset();
+                    window.showTab('entries');
+                }
+            };
+
+            window.deleteTrip = async function(id) {
+                if(!id) {
+                    console.error("Delete: No ID provided");
+                    showToast(t('toast.errorNoTripId'));
+                    return;
+                }
+                
+                if(!confirm(t('toast.deleteConfirm'))) return;
+                
+                try {
+                    const res = await fetch('/api/trips/' + id, { 
+                        method: 'DELETE' 
+                    });
+                    
+                    if(res.ok) {
+                        showToast(t('toast.tripDeleted'));
+                fetchTrips();
+                    } else {
+                        const error = await res.json();
+                        showToast(t('toast.deleteFailed', { error: (error.error || 'Unknown error') }));
+                    }
+                } catch(err) {
+                    console.error("Delete error:", err);
+                    showToast(t('toast.deleteError'));
+                }
+            };
+
+  function updateDashboard(data) {
+    let totalTrips = data.length;
+    let totalKM = 0;
+    let entryTotal = 0;
+    let companyTotal = 0;
+    let todayKM = 0;
+    let todayAmt = 0;
+    let netProfit = 0;
+    const rate = window.getRate ? window.getRate() : 21;
+    const today = new Date().toLocaleDateString('en-GB').split('/').join('-');
+
+    data.forEach(e => {
+        const km = parseFloat(e.km || 0) || 0;
+        const amt = parseFloat(e.total || 0) || 0;
+        const cng = parseFloat(e.cng || 0) || 0;
+        const otherExpense = parseFloat(e.otherExpense || 0) || 0;
+
+        totalKM += km;
+        entryTotal += amt;
+        companyTotal += km * rate;
+        const revenue = (km * rate) + (parseFloat(e.other || 0) || 0);
+        const expenses = cng + otherExpense;
+        netProfit += revenue - expenses;
+
+        if (e.date === today) {
+            todayKM += km;
+            todayAmt += amt;
+        }
+    });
+
+    animateValue('dashTrips', 0, totalTrips, 500);
+    animateValue('dashKM', 0, totalKM, 800);
+    animateValue('dashEntryTotal', 0, entryTotal, 900);
+    animateValue('dashCompanyTotal', 0, companyTotal, 900);
+    animateValue('dashTodayKM', 0, todayKM, 700);
+    animateValue('dashTodayAmt', 0, todayAmt, 900);
+    animateValue('dashNetProfit', 0, netProfit, 1000);
+}
+
+function updateMonthlySummary(data) {
+    const monthInput = document.getElementById('dashMonthFilter');
+    const rate = window.getRate ? window.getRate() : 21;
+
+    if (!monthInput || !monthInput.value) {
+
+        document.getElementById('dashMonth').innerText = "--";
+        document.getElementById('dashMonthTrips').innerText = 0;
+        document.getElementById('dashMonthKM').innerText = "0.00";
+        document.getElementById('dashMonthEntry').innerText = "₹0";
+        document.getElementById('dashMonthCompany').innerText = "₹0";
+        return;
+    }
+
+    const [year, month] = monthInput.value.split('-');
+
+    let trips = 0, km = 0, entry = 0, company = 0;
+
+    data.forEach(e => {
+        if (!e.date) return;
+
+        const parts = e.date.split('-'); // dd-mm-yyyy
+        if (parts.length !== 3) return;
+
+        if (parts[1] === month && parts[2] === year) {
+            trips++;
+            const k = parseFloat(e.km);
+            const amt = parseFloat(e.total || 0);
+
+            km += k;
+            entry += amt;
+            company += k * rate;
+        }
+    });
+
+    document.getElementById('dashMonth').innerText = month + "-" + year;
+    document.getElementById('dashMonthTrips').innerText = trips;
+    document.getElementById('dashMonthKM').innerText = km.toFixed(2);
+    document.getElementById('dashMonthEntry').innerText =
+        "₹" + entry.toLocaleString('en-IN', {minimumFractionDigits:2});
+    document.getElementById('dashMonthCompany').innerText =
+        "₹" + company.toLocaleString('en-IN', {minimumFractionDigits:2});
+}
+
+
+    
+
+function animateValue(id, start, end, duration = 800) {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    let startTimestamp = null;
+
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const value = progress * (end - start) + start;
+
+        if (id.toLowerCase().includes('total') || id.toLowerCase().includes('amt') || id.toLowerCase().includes('profit')) {
+            el.innerText = "₹" + value.toLocaleString('en-IN', {
+                maximumFractionDigits: 2
+            });
+        } else {
+            el.innerText = Number.isInteger(end)
+                ? Math.floor(value)
+                : value.toFixed(2);
+        }
+
+        if (progress < 1) {
+            requestAnimationFrame(step);
+        }
+    };
+
+    requestAnimationFrame(step);
+}
+
+
+            
+            function renderTables(data) {
+        const lBody = document.getElementById('listBody');
+        const cBody = document.getElementById('companyTableBody');
+        const lFoot = document.getElementById('listFoot');
+        const cFoot = document.getElementById('companyFoot');
+        const rate = window.getRate ? window.getRate() : 21;
+        
+        lBody.innerHTML = '';
+        cBody.innerHTML = '';
+        
+        let gKm = 0, gCng = 0, gAmt = 0, gcAmt = 0;
+
+        data.forEach(e => {
+            const km = parseFloat(e.km || 0);
+            const cng = parseFloat(e.cng || 0);
+            const amt = parseFloat(e.total || 0);
+
+            gKm += km;
+            gCng += cng;
+            gAmt += amt;
+
+            const companyValue = (parseFloat(e.km || 0)) * rate;
+            gcAmt += companyValue;
+
+       const entryHtml =
+'<tr class="hover:bg-slate-50 border-b">' +
+
+'<td class="p-4 text-orange-500 uppercase">' + (e.date || '-') + '</td>' +
+
+'<td class="p-4 font-black text-orange-500 uppercase font-mono">' + (e.tripId || '-') + '</td>' +
+
+'<td class="p-4 text-center font-bold">' + (e.person ?? '-') + '</td>' +
+
+'<td class="p-4 text-sm leading-tight font-semibold">🏁 ' + (e.pickup || '-') +
+'<br/>📍 ' + (e.drop || '-') + '</td>' +
+
+'<td class="p-4 font-bold font-mono">' + 
+(parseFloat(e.km) || 0).toFixed(2) + ' KM</td>' +
+
+'<td class="p-4 text-xs font-black text-slate-500 uppercase font-mono">' +
+(e.pickupTime || '-') + ' - ' + (e.dropTime || '-') + '</td>' +
+
+'<td class="p-4 text-xs font-bold">' +
+t('table.otherPlus') + (parseFloat(e.other) || 0).toFixed(2) +
+'<br/>' + t('table.cngMinus') + (parseFloat(e.cng) || 0).toFixed(2) +
+'<br/>' + t('table.expMinus') + (parseFloat(e.otherExpense) || 0).toFixed(2) +
+'</td>' +
+
+'<td class="p-4 text-right font-black text-slate-900">₹' +
+(parseFloat(e.total) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) +
+'</td>' +
+
+'<td class="p-4 text-center no-pdf">' +
+
+'<button data-edit-id="' + (e._id || '') + '" class="text-indigo-500 hover:text-indigo-700 cursor-pointer" title="' + t('table.editTitle') + '">🖊</button>' +
+
+'<button data-delete-id="' + (e._id || '') + '" class="text-rose-400 hover:text-rose-600 ml-2 cursor-pointer" title="' + t('table.deleteTitle') + '">🗑️</button>' +
+
+'</td>' +
+'</tr>';
+
+
+
+            lBody.innerHTML += entryHtml;
+
+            // Company table  
+            const companyHtml = '<tr class="hover:bg-indigo-50 border-b"><td class="p-4 font-bold text-slate-800 font-mono text-xs">' + e.date + '</td>' +
+                '<td class="p-4 font-black text-orange-500 uppercase font-mono">' + e.tripId + '</td>' +
+                '<td class="p-4 text-center font-bold">' + e.person + '</td>' +
+                '<td class="p-4 text-sm leading-tight font-semibold">🏁 ' + e.pickup + '<br/>📍 ' + e.drop + '</td>' +
+                '<td class="p-4 font-bold font-mono">' + km.toFixed(2) + ' KM</td>' +
+                '<td class="p-4 text-xs font-black text-slate-500 uppercase font-mono">' + e.pickupTime + ' - ' + e.dropTime + '</td>' +
+                '<td class="p-4 text-right font-black text-indigo-900 text-base">₹' + companyValue.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td></tr>';
+            cBody.innerHTML += companyHtml;
+        });
+
+        // Footers
+        const fHtml = (trips, km, cng, amt) => {
+            const cngText = cng > 0 ? t('table.cngMinus') + cng.toLocaleString('en-IN') : '-';
+            return '<tr><td colspan="2" class="p-4 text-xs">' + t('table.tripsPrefix') + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">' + t('table.grandTotal') + '</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-xs font-black">' + cngText + '</td><td class="p-4"></td><td class="p-4 text-right text-indigo-300 text-base">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td><td class="no-pdf"></td></tr>';
+        };
+
+        const cfHtml = (trips, km, amt) => {
+            return '<tr><td colspan="2" class="p-4 text-xs">' + t('table.tripsPrefix') + trips + '</td><td class="p-4 text-center">-</td><td class="p-4 text-xs text-center font-black underline">' + t('table.grandTotal') + '</td><td class="p-4 font-mono">' + km.toFixed(2) + ' KM</td><td class="p-4 text-center">-</td><td class="p-4 text-right text-indigo-100 text-lg">₹' + amt.toLocaleString('en-IN', {minimumFractionDigits:2}) + '</td></tr>';
+        };
+
+        lFoot.innerHTML = fHtml(data.length, gKm, gCng, gAmt);
+        cFoot.innerHTML = cfHtml(data.length, gKm, gcAmt);
+        updateDashboard(data);
+        updateMonthlySummary(data);
+        animateDashboard();
+        renderKMChart(data);
+renderDailyChart(data);
+renderProfitChart(data);
+renderWeeklyChart(data);
+
+
+
+    }
+        function animateDashboard() {
+        const els = document.querySelectorAll('.dash-value');
+        if (!els.length) return;
+
+        els.forEach(el => {
+            try {
+                el.style.setProperty('animation', 'none', 'important');
+                void el.offsetHeight;
+                el.style.setProperty('animation', 'numberPop 0.35s ease', 'important');
+            } catch (err) {
+                console.log("Animation skip:", err);
+            }
+        });
+    }
+
+
+            function showToast(m, duration) {
+                const t = document.getElementById('toast');
+                t.innerText = m; t.classList.remove('hidden');
+                setTimeout(() => t.classList.add('hidden'), duration || 3000);
+            }
+
+            function createPdfCaptureSurface(widthPx) {
+                const host = document.createElement('div');
+                host.setAttribute('data-pdf-capture-surface', '1');
+                host.style.position = 'fixed';
+                host.style.inset = '0';
+                host.style.zIndex = '2147483647';
+                host.style.display = 'flex';
+                host.style.justifyContent = 'center';
+                host.style.alignItems = 'flex-start';
+                host.style.padding = '16px';
+                host.style.overflow = 'auto';
+                host.style.pointerEvents = 'none';
+                host.style.background = 'rgba(255,255,255,0.01)';
+                host.style.boxSizing = 'border-box';
+
+                const stage = document.createElement('div');
+                stage.style.width = widthPx;
+                stage.style.maxWidth = widthPx;
+                stage.style.background = '#ffffff';
+                stage.style.color = '#0f172a';
+                stage.style.boxSizing = 'border-box';
+                stage.style.padding = '0';
+                stage.style.margin = '0';
+
+                host.appendChild(stage);
+                document.body.appendChild(host);
+                return { host: host, stage: stage };
+            }
+
+            function forcePdfLightStyles(root) {
+                if (!root) return;
+                root.style.setProperty('background', '#ffffff', 'important');
+                root.style.setProperty('color', '#0f172a', 'important');
+                root.querySelectorAll('*').forEach(function(el) {
+                    const inlineColor = el.style.color ? String(el.style.color) : '';
+                    const inlineBackground = el.style.background ? String(el.style.background) : '';
+                    const inlineBackgroundColor = el.style.backgroundColor ? String(el.style.backgroundColor) : '';
+                    el.style.setProperty('color', inlineColor || '#0f172a', 'important');
+                    if (inlineBackground) {
+                        el.style.setProperty('background', inlineBackground, 'important');
+                    } else if (inlineBackgroundColor) {
+                        el.style.setProperty('background-color', inlineBackgroundColor, 'important');
+                    }
+                    el.style.setProperty('text-shadow', 'none', 'important');
+                    el.style.setProperty('filter', 'none', 'important');
+                });
+            }
+
+            async function waitForPdfCapture(root) {
+                if (!root) return;
+                try {
+                    if (document.fonts && document.fonts.ready) {
+                        await document.fonts.ready;
+                    }
+                } catch (err) {}
+
+                const images = Array.from(root.querySelectorAll('img'));
+                await Promise.all(images.map(function(img) {
+                    return new Promise(function(resolve) {
+                        if (img.complete) {
+                            resolve();
+                            return;
+                        }
+                        function finish() {
+                            img.removeEventListener('load', finish);
+                            img.removeEventListener('error', finish);
+                            resolve();
+                        }
+                        img.addEventListener('load', finish, { once: true });
+                        img.addEventListener('error', finish, { once: true });
+                        setTimeout(finish, 2500);
+                    });
+                }));
+
+                await new Promise(function(resolve) {
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(resolve);
+                    });
+                });
+            }
+
+            function escapePdfText(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function formatPdfMoney(value) {
+                return '₹' + (Number(value) || 0).toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            function buildTripReportHtml(kind, trips) {
+                const safeTrips = Array.isArray(trips) ? trips : [];
+                const isCompanyReport = kind === 'company-entries';
+                const rate = window.getRate ? window.getRate() : 21;
+                const monthInput = document.getElementById(isCompanyReport ? 'monthFilter' : 'entriesMonthFilter');
+                const selectedMonth = monthInput && monthInput.value ? monthInput.value : '';
+                let totalKm = 0;
+                let totalEntryAmount = 0;
+                let totalCompanyAmount = 0;
+                let totalCng = 0;
+
+                const rowsHtml = safeTrips.length ? safeTrips.map(function(item) {
+                    const km = Number(item && item.km) || 0;
+                    const total = Number(item && item.total) || 0;
+                    const companyValue = km * rate;
+                    const cng = Number(item && item.cng) || 0;
+                    const other = Number(item && item.other) || 0;
+                    const otherExpense = Number(item && item.otherExpense) || 0;
+
+                    totalKm += km;
+                    totalEntryAmount += total;
+                    totalCompanyAmount += companyValue;
+                    totalCng += cng;
+
+                    if (isCompanyReport) {
+                        return ''
+                            + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(item && item.date ? item.date : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;font-weight:700;">' + escapePdfText(item && item.tripId ? item.tripId : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:center;">' + escapePdfText(item && item.person != null ? item.person : '-') + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickup) || '-') + ' -> ' + String((item && item.drop) || '-')) + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;">' + km.toFixed(2) + ' KM</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickupTime) || '-') + ' - ' + String((item && item.dropTime) || '-')) + '</td>'
+                            +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;font-weight:700;">' + formatPdfMoney(companyValue) + '</td>'
+                            + '</tr>';
+                    }
+
+                    return ''
+                        + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(item && item.date ? item.date : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;font-weight:700;">' + escapePdfText(item && item.tripId ? item.tripId : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:center;">' + escapePdfText(item && item.person != null ? item.person : '-') + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickup) || '-') + ' -> ' + String((item && item.drop) || '-')) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;">' + km.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">' + escapePdfText(String((item && item.pickupTime) || '-') + ' - ' + String((item && item.dropTime) || '-')) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;">'
+                        +     'Other: ' + (other).toFixed(2) + '<br>'
+                        +     'CNG: ' + (cng).toFixed(2) + '<br>'
+                        +     'Expense: ' + (otherExpense).toFixed(2)
+                        +   '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:7px;font-size:11px;vertical-align:top;text-align:right;font-weight:700;">' + formatPdfMoney(total) + '</td>'
+                        + '</tr>';
+                }).join('') : (''
+                    + '<tr>'
+                    +   '<td colspan="' + (isCompanyReport ? '7' : '8') + '" style="border:1px solid #cbd5e1;padding:16px;text-align:center;color:#64748b;font-size:12px;">No trips found for the selected period.</td>'
+                    + '</tr>');
+
+                const footerHtml = isCompanyReport
+                    ? (''
+                        + '<tr>'
+                        +   '<td colspan="4" style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">Trips: ' + safeTrips.length + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">' + totalKm.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">Grand Total</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:900;text-align:right;">' + formatPdfMoney(totalCompanyAmount) + '</td>'
+                        + '</tr>')
+                    : (''
+                        + '<tr>'
+                        +   '<td colspan="4" style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">Trips: ' + safeTrips.length + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">' + totalKm.toFixed(2) + ' KM</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;">CNG: ' + totalCng.toFixed(2) + '</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:700;text-align:right;">Grand Total</td>'
+                        +   '<td style="border:1px solid #cbd5e1;padding:8px;font-size:11px;font-weight:900;text-align:right;">' + formatPdfMoney(totalEntryAmount) + '</td>'
+                        + '</tr>');
+
+                return ''
+                    + '<div style="width:100%;background:#ffffff;color:#0f172a;font-family:'Hind Vadodara','Segoe UI',Arial,sans-serif;box-sizing:border-box;">'
+                    +   '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">'
+                    +     '<div style="font-size:18px;font-weight:900;color:#0f172a;">Tripset - ' + (isCompanyReport ? 'Company Report' : 'Entry Report') + '</div>'
+                    +     '<div style="font-size:11px;color:#475569;margin-top:4px;">Generated: ' + escapePdfText(new Date().toLocaleString('en-IN')) + '</div>'
+                    +     '<div style="font-size:11px;color:#475569;margin-top:2px;">User: ' + escapePdfText(String(window.currentUserDisplayName || '')) + '</div>'
+                    +     (selectedMonth ? '<div style="font-size:11px;color:#475569;margin-top:2px;">Month: ' + escapePdfText(selectedMonth) + '</div>' : '')
+                    +   '</div>'
+                    +   '<table style="width:100%;border-collapse:collapse;table-layout:fixed;background:#ffffff;">'
+                    +     '<thead style="background:' + (isCompanyReport ? '#eef2ff' : '#0f172a') + ';color:' + (isCompanyReport ? '#1e293b' : '#f8fafc') + ';">'
+                    +       '<tr>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Date</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">ID</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:center;">P</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Route</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">KM</th>'
+                    +         '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Time</th>'
+                    +         (isCompanyReport
+                                ? '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">Total</th>'
+                                : '<th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:left;">Other Details</th><th style="border:1px solid #cbd5e1;padding:7px;font-size:11px;text-align:right;">Total</th>')
+                    +       '</tr>'
+                    +     '</thead>'
+                    +     '<tbody>' + rowsHtml + '</tbody>'
+                    +     '<tfoot style="background:' + (isCompanyReport ? '#312e81' : '#0f172a') + ';color:#ffffff;">' + footerHtml + '</tfoot>'
+                    +   '</table>'
+                    + '</div>';
+            }
+
+            window.downloadPDF = async function(id) {
+                if (window.appFeatureFlags && window.appFeatureFlags.pdfEnabled === false) {
+                    showToast('PDF download disabled by admin');
+                    return;
+                }
+                const trips = Array.isArray(window.currentTrips) ? window.currentTrips.slice() : [];
+                if (!trips.length) {
+                    showToast(t('toast.noData'));
+                    return;
+                }
+
+                const reportLabel = id === 'company-entries' ? 'Company Report' : 'Entry Report';
+                const filenamePrefix = id === 'company-entries' ? 'Company_Report' : 'Entry_Report';
+                const todayToken = new Date().toISOString().slice(0, 10);
+                const filename = filenamePrefix + '_' + todayToken + '.pdf';
+
+                const surface = createPdfCaptureSurface('794px');
+                const exportRoot = surface.host;
+                const exportStage = surface.stage;
+                exportStage.style.padding = '16px';
+                exportStage.style.fontFamily = "'Hind Vadodara','Inter',sans-serif";
+
+                exportStage.innerHTML = buildTripReportHtml(id, trips);
+
+                try {
+                    showToast(t('toast.pdfGenerating'));
+                    await waitForPdfCapture(exportStage);
+                    await html2pdf().set({
+                        margin: [8, 8, 10, 8],
+                        filename: filename,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: {
+                            scale: 2,
+                            useCORS: true,
+                            allowTaint: false,
+                            foreignObjectRendering: true,
+                            backgroundColor: '#ffffff',
+                            scrollX: 0,
+                            scrollY: 0,
+                            width: exportStage.scrollWidth,
+                            windowWidth: exportStage.scrollWidth
+                        },
+                        jsPDF: {
+                            unit: 'mm',
+                            format: 'a4',
+                            orientation: 'portrait',
+                            compress: true
+                        },
+                        pagebreak: { mode: ['css', 'legacy', 'avoid-all'] }
+                    }).from(exportStage).save();
+                    window.trackReportDownload(id === 'company-entries' ? 'company-pdf' : 'entries-pdf');
+                    showToast(t('toast.downloadComplete'));
+                } catch (err) {
+                    console.error('PDF export failed:', err);
+                    showToast('PDF export failed');
+                } finally {
+                    exportRoot.remove();
+                }
+            };
+
+            // Invoice Generator (MongoDB only)
+            (function() {
+                const inr = new Intl.NumberFormat('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 2
+                });
+
+                function formatInr(n) {
+                    const num = Number(n) || 0;
+                    return inr.format(num);
+                }
+
+                function formatMonthLabel(ym) {
+                    if (!/^d{4}-d{2}$/.test(String(ym || ''))) return String(ym || '');
+                    const [y, m] = ym.split('-').map(Number);
+                    const d = new Date(y, m - 1, 1);
+                    return d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+                }
+
+                function formatDateOnly(d) {
+                    const parsed = d ? new Date(d) : new Date();
+                    return parsed.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                    });
+                }
+
+                function escapeHtml(val) {
+                    return String(val == null ? '' : val)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                function resolveInvoiceAssetUrl(url) {
+                    const raw = String(url || '').trim();
+                    if (!raw) return '';
+                    try {
+                        return new URL(raw, window.location.origin).href;
+                    } catch (err) {
+                        return raw;
+                    }
+                }
+
+                function createInvoiceLogoFallbackHtml() {
+                    return '<div style="width:44px;height:44px;border:1px solid #0f172a;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;background:#fff;">T</div>';
+                }
+
+                function createInvoiceExportRoot(html) {
+                    const surface = createPdfCaptureSurface('210mm');
+                    const root = surface.stage;
+                    root.setAttribute('data-invoice-export-root', '1');
+                    root.style.setProperty('padding', '0', 'important');
+                    root.style.setProperty('margin', '0', 'important');
+                    root.style.setProperty('background', '#ffffff', 'important');
+                    root.style.setProperty('box-sizing', 'border-box', 'important');
+                    root.innerHTML = html;
+                    forcePdfLightStyles(root);
+                    return surface;
+                }
+
+                function replaceInvoiceImageWithFallback(img) {
+                    if (!img || !img.parentNode) return;
+                    const wrap = document.createElement('div');
+                    wrap.innerHTML = createInvoiceLogoFallbackHtml();
+                    const fallback = wrap.firstChild;
+                    if (fallback) {
+                        img.parentNode.replaceChild(fallback, img);
+                    }
+                }
+
+                async function waitForInvoiceRender(root) {
+                    if (!root) return;
+                    try {
+                        if (document.fonts && document.fonts.ready) {
+                            await document.fonts.ready;
+                        }
+                    } catch (err) {}
+
+                    const images = Array.from(root.querySelectorAll('img'));
+                    await Promise.all(images.map(function(img) {
+                        return new Promise(function(resolve) {
+                            let done = false;
+                            function finish() {
+                                if (done) return;
+                                done = true;
+                                resolve();
+                            }
+                            function handleLoad() {
+                                cleanup();
+                                if (!img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                finish();
+                            }
+                            function handleError() {
+                                cleanup();
+                                replaceInvoiceImageWithFallback(img);
+                                finish();
+                            }
+                            function cleanup() {
+                                img.removeEventListener('load', handleLoad);
+                                img.removeEventListener('error', handleError);
+                            }
+                            if (img.complete) {
+                                if (!img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                return finish();
+                            }
+                            img.addEventListener('load', handleLoad, { once: true });
+                            img.addEventListener('error', handleError, { once: true });
+                            setTimeout(function() {
+                                cleanup();
+                                if (!img.complete || !img.naturalWidth) {
+                                    replaceInvoiceImageWithFallback(img);
+                                }
+                                finish();
+                            }, 2500);
+                        });
+                    }));
+
+                        await waitForPdfCapture(root);
+                }
+
+                function getInvoiceMonth(monthOverride) {
+                    const monthInput = document.getElementById('invoiceMonth');
+                    const modalInput = document.getElementById('invoiceMonthModal');
+                    const month = (monthOverride && String(monthOverride).trim())
+                        ? String(monthOverride).trim()
+                        : ((modalInput && modalInput.value) ? modalInput.value : ((monthInput && monthInput.value) ? monthInput.value : ''));
+                    return month;
+                }
+
+                function buildInvoiceRows(items) {
+                    if (!items.length) {
+                        return '<tr><td colspan="4" style="border:1px solid #0f172a;padding:10px;text-align:center;color:#475569;">No billable trips for selected month.</td></tr>';
+                    }
+                    return items.map(function(it) {
+                        const qty = Number(it.quantity) || 0;
+                        const price = Number(it.price) || 0;
+                        const total = Number(it.total) || 0;
+                        const metaBits = [];
+                        if (it.tripId) metaBits.push('Trip: ' + String(it.tripId));
+                        if (it.date) metaBits.push('Date: ' + String(it.date));
+                        return ''
+                            + '<tr style="page-break-inside:avoid;break-inside:avoid;">'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;vertical-align:top;word-break:break-word;">'
+                            +     '<div style="font-weight:700;">' + escapeHtml(it.itemName || 'Service') + '</div>'
+                            +     (metaBits.length ? '<div style="margin-top:4px;font-size:10px;color:#475569;">' + escapeHtml(metaBits.join(' | ')) + '</div>' : '')
+                            +   '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + qty.toFixed(2) + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;">' + formatInr(price) + '</td>'
+                            +   '<td style="border:1px solid #0f172a;padding:7px;text-align:right;vertical-align:top;font-weight:700;">' + formatInr(total) + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+
+                function buildInvoiceHtml(model) {
+                    const logoUrl = resolveInvoiceAssetUrl(model.companyLogoUrl);
+                    const logoHtml = logoUrl
+                        ? '<img src="' + escapeHtml(logoUrl) + '" alt="Company Logo" style="width:44px;height:44px;object-fit:contain;border:1px solid #0f172a;padding:4px;background:#fff;" crossorigin="anonymous" referrerpolicy="no-referrer">'
+                        : createInvoiceLogoFallbackHtml();
+
+                    return ''
+                        + '<div id="invoiceDocument" style="width:190mm;min-height:277mm;margin:0 auto;padding:0;background:#fff;color:#0f172a;font-size:12px;line-height:1.45;box-sizing:border-box;">'
+                        +   '<div style="border:1px solid #0f172a;padding:10mm;box-sizing:border-box;">'
+                        +     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10mm;">'
+                        +       '<div style="display:flex;gap:10px;align-items:flex-start;">'
+                        +         logoHtml
+                        +         '<div>'
+                        +           '<div style="font-size:26px;font-weight:900;letter-spacing:.02em;">' + escapeHtml(model.companyName || 'Tripset') + '</div>'
+                        +           '<div style="font-size:11px;color:#334155;text-transform:uppercase;letter-spacing:.16em;margin-top:2px;">Tax Invoice</div>'
+                        +         '</div>'
+                        +       '</div>'
+                        +       '<table style="border-collapse:collapse;min-width:66mm;font-size:11px;">'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Invoice Number</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceNumber) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Date</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceDate) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:5px 6px;font-weight:700;">Month</td><td style="border:1px solid #0f172a;padding:5px 6px;">' + escapeHtml(model.invoiceMonthLabel) + '</td></tr>'
+                        +       '</table>'
+                        +     '</div>'
+
+                        +     '<div style="margin-top:8mm;border:1px solid #0f172a;padding:8px;">'
+                        +       '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;">Bill To</div>'
+                        +       '<div><span style="font-weight:700;">Customer Name:</span> ' + escapeHtml(model.customerName) + '</div>'
+                        +       '<div><span style="font-weight:700;">Contact Details:</span> ' + escapeHtml(model.customerContact || 'N/A') + '</div>'
+                        +       '<div><span style="font-weight:700;">Prepared By:</span> ' + escapeHtml(model.signatoryName || 'Tripset User') + '</div>'
+                        +     '</div>'
+
+                        +     '<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8mm;">'
+                        +       '<thead>'
+                        +         '<tr>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:left;width:52%;">Item Name</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Quantity</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Price</th>'
+                        +           '<th style="border:1px solid #0f172a;padding:7px;text-align:right;width:16%;">Total</th>'
+                        +         '</tr>'
+                        +       '</thead>'
+                        +       '<tbody>' + buildInvoiceRows(model.items) + '</tbody>'
+                        +     '</table>'
+
+                        +     '<div style="margin-top:8mm;display:flex;justify-content:flex-end;">'
+                        +       '<table style="width:82mm;border-collapse:collapse;font-size:12px;">'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Subtotal</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;">' + formatInr(model.subtotal) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Tax (' + model.taxPercent.toFixed(2) + '%)</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;">' + formatInr(model.taxAmount) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;font-weight:900;">Grand Total</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;font-weight:900;">' + formatInr(model.grandTotal) + '</td></tr>'
+                        +         '<tr><td style="border:1px solid #0f172a;padding:6px;">Payment Status</td><td style="border:1px solid #0f172a;padding:6px;text-align:right;font-weight:700;">' + escapeHtml(model.paymentStatus) + '</td></tr>'
+                        +       '</table>'
+                        +     '</div>'
+
+                        +     '<div style="margin-top:16mm;display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;">'
+                        +       '<div style="font-size:10px;color:#475569;max-width:56%;">This invoice is computer generated and intended for accounting records.</div>'
+                        +       '<div style="text-align:center;min-width:65mm;">'
+                        +         '<div style="height:22mm;"></div>'
+                        +         '<div style="border-top:1px solid #0f172a;padding-top:5px;font-size:11px;font-weight:700;">Authorized Signature - ' + escapeHtml(model.signatoryName || 'Pratham') + '</div>'
+                        +       '</div>'
+                        +     '</div>'
+                        +   '</div>'
+                        + '</div>';
+                }
+
+                var currentInvoicePreviewMonth = '';
+
+                function renderInvoicePreviewState(message, isError) {
+                    const previewBody = document.getElementById('invoicePreviewBody');
+                    if (!previewBody) return;
+                    previewBody.innerHTML = ''
+                        + '<div style="min-height:240px;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;border:1px dashed '
+                        + (isError ? '#fca5a5' : '#cbd5e1')
+                        + ';border-radius:16px;background:'
+                        + (isError ? '#fff1f2' : '#f8fafc')
+                        + ';color:'
+                        + (isError ? '#b91c1c' : '#475569')
+                        + ';font-weight:700;">'
+                        + escapeHtml(message || 'Invoice preview is unavailable.')
+                        + '</div>';
+                }
+
+                window.openInvoicePreview = async function(monthOverride) {
+                    const previewModal = document.getElementById('invoicePreviewModal') || createInvoicePreviewModal();
+                    try {
+                        const month = getInvoiceMonth(monthOverride);
+                        currentInvoicePreviewMonth = month;
+                        if (!previewModal) return;
+                        previewModal.classList.remove('hidden');
+                        if (!month) {
+                            renderInvoicePreviewState('Invoice month is missing. Select a valid month first.', true);
+                            return;
+                        }
+
+                        renderInvoicePreviewState(t('toast.generatingInvoice') || 'Generating invoice...', false);
+                        const prepared = await prepareInvoice(month);
+                        if (!prepared) {
+                            renderInvoicePreviewState('Invoice data is unavailable for the selected month.', true);
+                            return;
+                        }
+
+                        const previewBody = document.getElementById('invoicePreviewBody');
+                        if (!previewBody || !prepared.html) {
+                            renderInvoicePreviewState('Invoice template is missing.', true);
+                            return;
+                        }
+
+                        previewBody.innerHTML = prepared.html;
+                    } catch (err) {
+                        console.error('Invoice preview error:', err);
+                        renderInvoicePreviewState((err && err.message) || 'Failed to generate invoice.', true);
+                    }
+                };
+
+                function createInvoicePreviewModal() {
+                    const modal = document.createElement('div');
+                    modal.id = 'invoicePreviewModal';
+                    modal.className = 'hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70';
+                    modal.style.padding = '20px';
+                    modal.style.boxSizing = 'border-box';
+                    modal.style.overflowY = 'auto';
+                    modal.innerHTML = ''
+                        + '<div style="background:#fff;border-radius:20px;box-shadow:0 24px 60px rgba(15,23,42,0.35);max-width:960px;width:min(96vw,960px);box-sizing:border-box;overflow:hidden;">'
+                        +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#fff7ed;">'
+                        +     '<div>'
+                        +       '<div style="font-size:18px;font-weight:900;color:#0f172a;">Invoice Preview</div>'
+                        +       '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Review before download</div>'
+                        +     '</div>'
+                        +     '<div style="display:flex;align-items:center;gap:8px;">'
+                        +       '<button onclick="window.closeInvoicePreview()" style="background:#ef4444;color:#fff;border:none;padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:700;">Close</button>'
+                        +       '<button onclick="window.downloadInvoiceFromPreview()" style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:700;">Download PDF</button>'
+                        +     '</div>'
+                        +   '</div>'
+                        +   '<div id="invoicePreviewBody" style="max-height:calc(90vh - 88px);overflow:auto;padding:20px;background:#f8fafc;"></div>'
+                        + '</div>';
+                    document.body.appendChild(modal);
+
+                    modal.addEventListener('click', function(e) {
+                        if (e.target === modal) {
+                            window.closeInvoicePreview();
+                        }
+                    });
+
+                    return modal;
+                }
+
+                window.closeInvoicePreview = function() {
+                    const modal = document.getElementById('invoicePreviewModal');
+                    if (modal) {
+                        modal.classList.add('hidden');
+                    }
+                    currentInvoicePreviewMonth = '';
+                    renderInvoicePreviewState('Invoice preview closed.', false);
+                };
+
+                window.downloadInvoiceFromPreview = function() {
+                    const month = currentInvoicePreviewMonth || getInvoiceMonth();
+                    if (!month) {
+                        renderInvoicePreviewState('Invoice month is missing. Select a valid month first.', true);
+                        return;
+                    }
+                    window.closeInvoicePreview();
+                    downloadInvoice(month);
+                };
+
+                async function prepareInvoice(monthOverride) {
+                    const month = getInvoiceMonth(monthOverride);
+                    if (!month) {
+                        return null;
+                    }
+
+                    const res = await fetch('/api/invoice/' + encodeURIComponent(month), {
+                        cache: 'no-store',
+                        credentials: 'include'
+                    });
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (err) {
+                        data = null;
+                    }
+                    if (!res.ok) {
+                        showToast((data && data.error) ? String(data.error) : t('toast.invoiceFailed'));
+                        return null;
+                    }
+                    if (!data || typeof data !== 'object') {
+                        showToast('Invoice data is unavailable');
+                        return null;
+                    }
+                    const rawItems = Array.isArray(data.items) ? data.items : [];
+                    const items = rawItems.map(function(it) {
+                        return {
+                            tripId: String(it.tripId || ''),
+                            date: String(it.date || ''),
+                            itemName: String(it.itemName || 'Service'),
+                            quantity: Number(it.quantity) || 0,
+                            price: Number(it.price) || 0,
+                            total: Number(it.total) || 0
+                        };
+                    });
+                    const subtotal = Number.isFinite(Number(data.subtotal))
+                        ? Number(data.subtotal)
+                        : items.reduce(function(acc, it) { return acc + (Number(it.total) || 0); }, 0);
+                    const taxPercent = Math.max(0, Number(data.taxPercent) || 0);
+                    const taxAmount = Number.isFinite(Number(data.taxAmount))
+                        ? Number(data.taxAmount)
+                        : (subtotal * taxPercent / 100);
+                    const grandTotal = Number.isFinite(Number(data.grandTotal))
+                        ? Number(data.grandTotal)
+                        : subtotal + taxAmount;
+
+                    const model = {
+                        companyName: String(data.companyName || (window.appSettings && window.appSettings.companyName) || window.currentUserDisplayName || 'Pratham'),
+                        companyLogoUrl: String(data.companyLogoUrl || '/icon-512.png'),
+                        invoiceNumber: String(data.invoiceNumber || ('INV-' + String(month).replace('-', '') + '-001')),
+                        invoiceDate: formatDateOnly(data.invoiceDate),
+                        invoiceMonthLabel: formatMonthLabel(data.month || month),
+                        customerName: String((data.customer && data.customer.name) || 'Walk-in Customer'),
+                        customerContact: String((data.customer && data.customer.contact) || ''),
+                        items: items,
+                        subtotal: subtotal,
+                        taxPercent: taxPercent,
+                        taxAmount: taxAmount,
+                        grandTotal: grandTotal,
+                        paymentStatus: String(data.paymentStatus || 'Pending'),
+                        signatoryName: String(window.currentUserDisplayName || 'Pratham')
+                    };
+
+                    const content = document.getElementById('invoiceContent');
+                    if (!content) {
+                        showToast(t('toast.invoiceTemplateMissing'));
+                        return null;
+                    }
+
+                    const html = buildInvoiceHtml(model);
+                    content.innerHTML = html;
+
+                    return {
+                        month: month,
+                        html: html,
+                        model: model
+                    };
+                }
+
+                async function downloadInvoice(monthOverride) {
+                    const container = document.getElementById('invoiceContainer');
+                    let exportSurface = null;
+                    try {
+                        showToast(t('toast.generatingInvoice'));
+                        const prepared = await prepareInvoice(monthOverride);
+                        if (!prepared) return;
+
+                        if (container) container.classList.remove('hidden');
+                        exportSurface = createInvoiceExportRoot(prepared.html);
+                        await waitForInvoiceRender(exportSurface.stage);
+                        const exportTarget = exportSurface.stage.querySelector('#invoiceDocument') || exportSurface.stage;
+
+                        await html2pdf().set({
+                            margin: [10, 10, 10, 10],
+                            filename: 'Invoice_' + prepared.month + '.pdf',
+                            image: { type: 'jpeg', quality: 0.98 },
+                            html2canvas: {
+                                scale: 2,
+                                useCORS: true,
+                                allowTaint: false,
+                                foreignObjectRendering: true,
+                                backgroundColor: '#ffffff',
+                                scrollX: 0,
+                                scrollY: 0,
+                                width: exportTarget.scrollWidth,
+                                windowWidth: exportTarget.scrollWidth
+                            },
+                            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+                            pagebreak: { mode: ['css', 'legacy'], avoid: ['tr'] }
+                        }).from(exportTarget).save();
+
+                        showToast(t('toast.invoiceDownloaded'));
+                    } catch (e) {
+                        console.error('INVOICE DOWNLOAD ERROR:', e);
+                        showToast(t('toast.invoiceGenerationFailed'));
+                    } finally {
+                        if (exportSurface && exportSurface.host && exportSurface.host.parentNode) {
+                            exportSurface.host.parentNode.removeChild(exportSurface.host);
+                        }
+                        if (container) container.classList.add('hidden');
+                    }
+                }
+
+                window.openInvoiceModal = function() {
+                    var m = document.getElementById('invoiceModal');
+                    var inp = document.getElementById('invoiceMonthModal');
+                    var dash = document.getElementById('dashMonthFilter');
+                    var inv = document.getElementById('invoiceMonth');
+                    var month = (dash && dash.value) ? dash.value : ((inv && inv.value) ? inv.value : new Date().toISOString().slice(0, 7));
+                    if (inp) inp.value = month;
+                    if (m) m.classList.remove('hidden');
+                    setTimeout(function() { if (inp) inp.focus(); }, 50);
+                };
+
+                window.closeInvoiceModal = function() {
+                    var m = document.getElementById('invoiceModal');
+                    if (m) m.classList.add('hidden');
+                };
+
+                window.generateInvoiceFromModal = function() {
+                    var inp = document.getElementById('invoiceMonthModal');
+                    var month = inp && inp.value ? inp.value : '';
+                    if (!month) {
+                        showToast(t('toast.selectInvoiceMonth'));
+                        return;
+                    }
+                    window.closeInvoiceModal();
+                    window.generateInvoice(month);
+                };
+
+                window.generateInvoice = function(monthOverride) {
+                    if (window.appFeatureFlags && window.appFeatureFlags.pdfEnabled === false) {
+                        showToast('PDF download disabled by admin');
+                        return Promise.resolve();
+                    }
+                    window.trackReportDownload('invoice-pdf');
+                    return downloadInvoice(monthOverride);
+                };
+            })();
+
+   // Event delegation for edit/delete buttons (more reliable than inline onclick)
+   document.addEventListener('click', function(e) {
+       // Handle edit button clicks
+       if (e.target.closest('[data-edit-id]')) {
+           const id = e.target.closest('[data-edit-id]').getAttribute('data-edit-id');
+           if (id && window.openEditModal) {
+               window.openEditModal(id);
+           }
+       }
+       
+       // Handle delete button clicks
+       if (e.target.closest('[data-delete-id]')) {
+           const id = e.target.closest('[data-delete-id]').getAttribute('data-delete-id');
+           if (id && window.deleteTrip) {
+               window.deleteTrip(id);
+           }
+       }
+   });
+
+   window.onload = function() {
+    /* Dark mode applied by loadSettings after auth */
+};
+
+            ['e-km','e-other','e-cng','e-exp'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input', calcEditTotal);
+});
+console.log("SCRIPT END ✅");
+
+        
